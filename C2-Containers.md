@@ -122,5 +122,44 @@ Le `ws-service` n'est pas exposé directement sur Internet.
 > [!NOTE]
 > Le `ws-service` délègue ainsi la complexité de l'authentification OAuth à la Gateway. Il n'a plus qu'à vérifier cryptographiquement le "Token Interne" (extrêmement rapide, sans appel BDD) pour autoriser le client et tracker sa socket. Les appels gRPC fonctionnent sur le même principe.
 
+---
+
+## Matrice Réseau & Ports Internes Standards
+
+La communication interne entre pods respecte une cartographie de ports stricte, renforcée par des Network Policies :
+
+| Service / Composant | Protocole | Port Interne | Description & Rôle |
+| :--- | :--- | :--- | :--- |
+| **Traefik Ingress** | HTTP / HTTPS | `80` / `443` | Reverse proxy d'entrée unique (TLS Cloudflare). |
+| **API Gateway** | HTTP / WSS | `3000` | Port d'écoute du pod Gateway (en amont de Traefik). |
+| **Microservices Métiers** | gRPC | `3000` | Communication RPC binaire inter-services (Protobuf). |
+| **Bases PostgreSQL** | TCP / SQL | `5432` | 1 instance/base dédiée et isolée par microservice. |
+| **Neo4j (ms-social)** | Bolt | `7687` | Port de connexion binaire Cypher pour le graphe social. |
+| **Redis (Partagé & WS)** | Redis Protocol | `6379` | Broker Streams, files BullMQ et adaptateur Pub/Sub. |
+| **mcp-meta-indexer** | HTTP (SSE) | `3000` | Serveur MCP distant sur le cluster pour les agents IA. |
+
+---
+
+## Dimensionnement & Quotas Kubernetes des Pods
+
+Afin de garantir une allocation prédictive des ressources sur le cluster K3s et d'empêcher tout épuisement de mémoire (OOMKilled) :
+
+| Type de Composant | CPU Requests | CPU Limits | Memory Requests | Memory Limits |
+| :--- | :--- | :--- | :--- | :--- |
+| **API Gateway** | `50m` | `200m` | `64Mi` | `128Mi` |
+| **Microservices gRPC** | `100m` | `500m` | `128Mi` | `256Mi` |
+| **Runners (Outbox / Workers)** | `50m` | `200m` | `64Mi` | `128Mi` |
+| **Serveur mcp-meta-indexer** | `50m` | `200m` | `128Mi` | `256Mi` |
+
+---
+
+## Sécurité & Moindre Privilège : Le Token Interne (`INTERNAL TOKEN`)
+
+Pour interdire formellement tout contournement de l'API Gateway et garantir la propagation sécurisée de l'identité :
+1. **Zéro accès externe direct :** Aucun microservice (`ms-user`, `ms-event`, etc.) n'est accessible depuis l'extérieur du cluster. Seule l'API Gateway possède une route Ingress.
+2. **Génération du Token Interne :** Dès qu'une requête HTTP/REST ou WSS arrive à la Gateway, celle-ci valide le jeton de session JWT (Auth0/Firebase/interne) et génère un jeton interne chiffré et signé (`INTERNAL_TOKEN`).
+3. **Contenu du Jeton :** Il intègre l'identifiant utilisateur vérifié (`userId`), ses rôles, ses permissions fines et un identifiant de corrélation (`correlationId`).
+4. **Validation côté Microservice :** Les microservices gRPC vérifient cryptographiquement ce jeton dans leurs interceptors NestJS. **Toute requête gRPC dépourvue d'un `INTERNAL_TOKEN` valide est rejetée immédiatement** avec un statut gRPC `UNAUTHENTICATED`.
+
 > [!TIP]
 > La communication entre l'API Gateway et les Microservices est **synchrone** et ultra-rapide (gRPC). Cependant, dès qu'un Microservice reçoit la requête, il ne fait qu'une validation métier rapide et une insertion en base de données, avant de répondre immédiatement au Gateway. Tout le reste du travail "lourd" est délégué à la tuyauterie asynchrone détaillée dans le niveau **C3**.
