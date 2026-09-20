@@ -1,0 +1,20 @@
+name: Deploy Submodule Sync
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy-push:
+    name: Deploy Repo Submodule Push (docs)
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Update Deploy Submodule
+        uses: Volontariapp/ci-tools/.github/actions/update-deploy@main
+        with:
+          service: docs
+          sha: ${{ github.sha }}
+          org-repo-token: ${{ secrets.ORG_REPO_TOKEN }}
