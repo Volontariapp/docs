@@ -52,3 +52,57 @@ npm-packages/
 
 - En théorie puriste des Microservices, le partage de code est parfois déconseillé (principe du "Shared Nothing") pour éviter qu'une modification d'une librairie ne casse tous les services.
 - **Le Compromis Volontariapp** : Le code partagé est limité à l'intérieur de **frontières bien définies**. Le `ms-user` n'utilise pas le `@volontariapp/domain-event`. Le partage s'effectue verticalement (API -> Worker -> Post-Processor d'un même domaine) plutôt qu'horizontalement. Quant aux librairies techniques (`@volontariapp/outbox`), elles s'apparentent à un framework interne d'entreprise, versionné et testé rigoureusement.
+
+---
+
+## Le Cycle de Propagation CI/CD & La Règle du Stop Immédiat
+
+Dans une architecture distribuée multi-repo, la gestion des dépendances partagées exige une discipline de fer. Il est formellement interdit de modifier un consommateur (`ms-*`, `api-gateway`, runners) tant que la version amont du paquet n'a pas été effectivement compilée et publiée par la CI.
+
+### 1. La Cascade depuis `proto-registry` (Contrats gRPC)
+
+`proto-registry` est la Source Unique de Vérité (SSOT) des contrats Protobuf gRPC. Cependant, les microservices ne consomment pas directement des fichiers `.proto` bruts : ils consomment les paquets `@volontariapp/contracts` et `@volontariapp/contracts-nest` générés en TypeScript.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant DEV as Développeur / Agent
+    participant PROTO as proto-registry
+    participant CI_PROTO as CI GitHub Actions (proto)
+    participant NPM as npm-packages
+    participant CI_NPM as CI GitHub Actions (npm)
+    participant REG as Registre GitHub Packages
+    participant CONSUMER as Microservices (ms-*, api-gateway)
+
+    DEV->>PROTO: 1. Modifie les contrats (.proto) & vérifie buf lint
+    DEV->>DEV: 2. STOP IMMÉDIAT (attente de push / merge)
+    PROTO->>CI_PROTO: 3. Push / Merge sur main
+    CI_PROTO->>NPM: 4. Génère le code TS & ouvre automatiquement une PR dans npm-packages
+    Note over NPM,CI_NPM: 5. Revue & merge de la PR générée dans npm-packages
+    NPM->>CI_NPM: 6. Merge sur main (ou PR snapshot)
+    CI_NPM->>REG: 7. Publication de @volontariapp/contracts@<version>
+    Note over DEV,CONSUMER: 8. REPRISE : Seulement maintenant les microservices peuvent être mis à jour
+    CONSUMER->>REG: 9. yarn up @volontariapp/contracts@<version>
+    DEV->>CONSUMER: 10. Adaptation du code des controllers et clients gRPC
+```
+
+### 2. Le Cycle Direct dans `npm-packages`
+
+Lorsqu'une modification porte directement sur un package de `npm-packages` (ex: `messaging`, `shared`, `domain-user`, `database`) :
+
+1. **Édition locale** : Modifications apportées exclusivement dans `npm-packages/packages/<nom-du-package>/`.
+2. **Build local** : Validation stricte via `yarn build` et `yarn test` au sein de `npm-packages`.
+3. **Changeset** : Création obligatoire de l'entrée de versioning via `yarn changeset add`.
+4. **🛑 STOP IMMÉDIAT ET ABSOLU** :
+   - Le développeur ou l'agent **S'ARRÊTE IMMÉDIATEMENT**.
+   - **Interdiction formelle** de toucher aux microservices consommateurs.
+   - **Interdiction formelle** de tenter de compiler les consommateurs en avance ou d'injecter des bricolages de types (`as unknown as Type`, `any`, `@ts-ignore`).
+   - Le code est poussé sur une branche et une Pull Request est ouverte.
+5. **Publication CI** :
+   - Sur la PR, la CI GitHub Actions publie automatiquement une **version snapshot** (ex: `@volontariapp/messaging@1.4.2-snapshot-pr-28.0`).
+   - Lors du merge sur `main`, la CI publie la **version finale release**.
+6. **Reprise du travail dans les consommateurs** :
+   - Une fois la version publiée par la CI, on se place dans le microservice consommateur.
+   - On met à jour la dépendance : `yarn up @volontariapp/<package>@<version-snapshot>` (ou version définitive).
+   - On adapte le code consommateur avec des types 100% réels et vérifiés par le compilateur TypeScript.
+

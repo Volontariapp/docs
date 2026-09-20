@@ -55,6 +55,93 @@ sequenceDiagram
 
 Grâce à ce cycle (Saga Pattern), on garantit qu'un Job n'est effacé de la base d'origine que s'il a été traité jusqu'au bout, audité, et confirmé par le réseau.
 
+### Schéma Technique des Tables & Déclencheurs SQL
+
+Pour éliminer toute ambiguïté sur la structure de persistance, voici les 3 tables impliquées dans chaque base PostgreSQL de microservice :
+
+#### 1. Table `jobs_outbox` (Stockage temporaire de la tâche)
+| Colonne | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `UUID` (PK) | Identifiant unique généré à l'insertion |
+| `type` | `VARCHAR(255)` | Type de job issu de `JobMessagingType` (ex: `event.sync_calendar`) |
+| `emitter` | `VARCHAR(100)` | Nom du microservice émetteur (ex: `ms-event`) |
+| `emitter_id` | `VARCHAR(100)` | ID de l'initiateur (ex: `userId` ou `orgId`) |
+| `target` | `VARCHAR(100)` | Nom de la file BullMQ cible (ex: `events-queue`) |
+| `payload` | `JSONB` | Données nécessaires à l'exécution de la tâche |
+| `scheduled_at` | `TIMESTAMPTZ` | Date d'exécution souhaitée (exécution immédiate ou différée) |
+| `status` | `VARCHAR(50)` | Statut du job : `pending` \| `working` \| `done` \| `failed` |
+| `retry_count` | `INTEGER` | Nombre de tentatives d'exécution |
+| `created_at` | `TIMESTAMPTZ` | Horodatage de création |
+| `updated_at` | `TIMESTAMPTZ` | Dernier changement d'état |
+
+#### 2. Table `job_audit` (Traçabilité & Historique d'exécution)
+| Colonne | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `UUID` (PK) | Identifiant unique d'audit |
+| `job_id` | `UUID` | Référence vers `jobs_outbox.id` |
+| `type` | `VARCHAR(255)` | Type de job |
+| `status` | `VARCHAR(50)` | Statut terminal : `working` -> `done` ou `failed` |
+| `original_payload` | `JSONB` | Copie du payload d'origine |
+| `error_details` | `JSONB` | Stacktrace et message d'erreur si `failed` |
+| `started_at` | `TIMESTAMPTZ` | Prise en charge par le `BaseWorker` |
+| `completed_at` | `TIMESTAMPTZ` | Fin d'exécution |
+
+#### 3. Table `event_outbox` (Événements distribués à propager)
+| Colonne | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `UUID` (PK) | Identifiant unique de l'événement |
+| `type` | `VARCHAR(255)` | Type issu de `EventMessagingType` (ex: `event.created`) |
+| `emitter` | `VARCHAR(100)` | Microservice émetteur |
+| `emitter_id` | `VARCHAR(100)` | Initiateur de l'événement |
+| `target_services`| `JSONB` / `TEXT[]` | Liste des streams cibles (ex: `['stream:event-created']`) |
+| `payload` | `JSONB` | Payload de l'événement (`before`, `after`, `metadata`) |
+| `status` | `VARCHAR(50)` | Statut d'acheminement (`pending`, `processed`) |
+| `created_at` | `TIMESTAMPTZ` | Date de persistance |
+
+#### Le Trigger SQL Automatique (`trg_job_audit_to_event_outbox`)
+Un trigger SQL réside directement dans le schéma de la base :
+```sql
+CREATE OR REPLACE FUNCTION fn_audit_to_event_outbox()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.status = 'done' THEN
+        INSERT INTO event_outbox (id, type, emitter, emitter_id, target_services, payload, status, created_at)
+        VALUES (
+            gen_random_uuid(),
+            'job.outbox.success',
+            'workers-runner',
+            NEW.job_id::text,
+            ARRAY['stream:job_success'],
+            jsonb_build_object('jobId', NEW.job_id, 'auditId', NEW.id),
+            'pending',
+            NOW()
+        );
+    ELSIF NEW.status = 'failed' THEN
+        INSERT INTO event_outbox (id, type, emitter, emitter_id, target_services, payload, status, created_at)
+        VALUES (
+            gen_random_uuid(),
+            'job.outbox.failed',
+            'workers-runner',
+            NEW.job_id::text,
+            ARRAY['stream:job_failed'],
+            jsonb_build_object('jobId', NEW.job_id, 'auditId', NEW.id, 'error', NEW.error_details),
+            'pending',
+            NOW()
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_job_audit_to_event_outbox
+AFTER UPDATE ON job_audit
+FOR EACH ROW
+WHEN (OLD.status IS DISTINCT FROM NEW.status AND NEW.status IN ('done', 'failed'))
+EXECUTE FUNCTION fn_audit_to_event_outbox();
+```
+
+---
+
 ## 3. Le Pattern Scatter-Gather (Ex: Création d'un Événement)
 
 Lorsqu'un utilisateur clique sur "Créer un Événement", le frontend affiche un état "Pending" (Spinner). Il ne recevra le feu vert (via WebSocket) que lorsque toutes les sous-tâches auront été accomplies par le backend. 
@@ -67,7 +154,7 @@ C'est le **Scatter-Gather**.
    - Le `Post-Processor-Social` va créer l'événement dans le graphe de la base Neo4j.
 3. Chaque processeur publie son résultat de son côté sur le flux de feedback (`stream:ws-event-created-feedback`) avec le même **Correlation_ID**.
 4. **Gather (Rassemblement)** : Le `ws-service` écoute ces feedbacks. Il sait par configuration qu'il doit attendre **2 réponses** pour cet ID. 
-   - Il stocke temporairement l'état (ex: `received: 1/2`).
+   - Il stocke temporairement l'état dans Redis via `GatherStateService` (clé: `gather:<correlation_id>` avec un TTL de 60s).
    - Dès qu'il reçoit `2/2`, il envoie la notification WebSocket de succès (Done) au Frontend.
 
 ### Et en cas d'erreur ? (Gestion des Sagas)
@@ -82,3 +169,4 @@ L'architecture déclenche un flux compensatoire (Compensation Saga) :
 > [!TIP]
 > **Pourquoi le WS-Service écoute-t-il directement les Streams ?**
 > Plutôt que de forcer chaque microservice à faire un appel HTTP vers le Gateway ou le WS-Service pour dire "Mon job est fini", on utilise une approche Event-Driven pure. Le WS-Service est autonome et passif ; il observe les bus d'événements et informe le client, court-circuitant l'API Gateway.
+
