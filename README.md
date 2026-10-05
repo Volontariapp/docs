@@ -13,6 +13,7 @@ Nous utilisons le formalisme d'inspiration **C4 Model** pour structurer cette co
 3. **[C3 - Async Patterns & Flows](C3-Async-Patterns-And-Flows.md)** : **(Crucial)** Le cœur du réacteur. Ce document explique en détail la chorégraphie asynchrone, le Transactional Outbox, le cycle de vie des Jobs, le SQL Trigger `job_audit`, et le pattern Scatter-Gather du WebSocket.
 4. **[C4 - Deployment & Infrastructure](C4-Deployment-And-Infrastructure.md)** : La vision GitOps. Comment le code devient une infrastructure sécurisée (Kubernetes, ArgoCD, Sealed Secrets, Network Policies).
 5. **[Structure Monorepo & NPM](Monorepo-Structure.md)** : Comment la logique métier est mutualisée via `@volontariapp/domain-*` sans enfreindre les règles d'isolation des microservices.
+6. **[Stockage de Fichiers](stockage-fichiers/README.md)** : Upload direct S3, quarantaine et scan, rattachement des images aux posts, événements et avatars.
 
 ---
 

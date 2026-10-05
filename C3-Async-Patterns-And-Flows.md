@@ -10,13 +10,13 @@ Dans une architecture distribuée, que se passe-t-il si un Microservice enregist
 1. Le Microservice reçoit une requête (via gRPC depuis l'API Gateway).
 2. Il ouvre une Transaction SQL.
 3. Il insère les données métiers (ex: `INSERT INTO events`).
-4. Dans **la même transaction**, il insère un "ticket" dans la table `jobs_outbox` (Status: Pending).
+4. Dans **la même transaction**, il insère un "ticket" dans la table `jobs_outbox` (status : `PENDING`).
 5. Il ferme la transaction (Commit). 
 Si Postgres plante, rien n'est écrit. Si ça passe, les deux sont garantis d'être écrits. Le Microservice répond alors "OK" au Gateway.
 
 **L'Outbox Runner** :
 Un processus léger (`outbox-runners`) tourne en boucle infinie (Pull).
-Il scrute la table `jobs_outbox` (`SELECT ... FOR UPDATE SKIP LOCKED` pour éviter les collisions entre plusieurs pods). Dès qu'il trouve un job *Pending*, il le pousse vers une file Redis (BullMQ).
+Il scrute la table `jobs_outbox` (`SELECT ... FOR UPDATE SKIP LOCKED` pour éviter les collisions entre plusieurs pods). Dès qu'il trouve un job `PENDING`, il le pousse vers une file Redis (BullMQ).
 
 ## 2. Le Cycle de Vie Complet d'un Job et le SQL Trigger
 
@@ -31,114 +31,135 @@ sequenceDiagram
     participant REDIS_Q as BullMQ (Redis)
     participant WORKER as Workers Runner
     participant DB_AUD as DB (job_audit / event_queue)
-    participant OB_EV as Outbox Event Runner
     participant REDIS_S as Redis Stream
-    participant PP as Post-Processor
-    
-    API->>DB_OUT: 1. INSERT métier + INSERT job 'pending' (Transaction ACID)
-    OB_RUN->>DB_OUT: 2. Pull les jobs 'pending'
-    OB_RUN->>REDIS_Q: 3. Push vers la Queue Redis
-    
-    rect
-        Note over WORKER, DB_AUD: Exécution du Worker & Magie du Trigger SQL
-        REDIS_Q->>WORKER: 4. Consomme le Job
-        WORKER->>DB_AUD: 5. Met à jour la table 'job_audit' (DONE ou FAILED)
-        DB_AUD-->>DB_AUD: 6. TRIGGER SQL AUTOMATIQUE -> Insert dans 'event_outbox'
+    participant PP as Post-Processor (commun)
+
+    API->>DB_OUT: 1. INSERT métier + INSERT job PENDING (Transaction ACID)
+    OB_RUN->>DB_OUT: 2. Pull les jobs PENDING (FOR UPDATE SKIP LOCKED)
+    OB_RUN->>REDIS_Q: 3. Push vers la Queue BullMQ (colonne target)
+
+    Note over WORKER,DB_AUD: Exécution du Worker et Trigger SQL
+    REDIS_Q->>WORKER: 4. Consomme le Job
+    WORKER->>DB_AUD: 5. job_audit : PROCESSING puis COMPLETED ou FAILED
+    DB_AUD-->>DB_AUD: 6. Trigger notify_job_audit_status_change : INSERT dans event_queue
+
+    OB_RUN->>DB_AUD: 7. Pull l'événement d'audit dans event_queue
+    OB_RUN->>REDIS_S: 8. Push vers le stream nommé dans target_services (ex : event:job:outbox:success)
+
+    REDIS_S->>PP: 9. Le Post-Processor commun écoute le stream
+    alt COMPLETED
+        PP->>DB_OUT: 10. DELETE du job dans jobs_outbox + feedback vers ws:jobs-outbox-success
+    else FAILED
+        PP->>DB_OUT: 10. jobs_outbox.status PENDING vers FAILED + feedback vers ws:jobs-outbox-failure
     end
-    
-    OB_EV->>DB_AUD: 7. L'Outbox pull l'événement d'audit
-    OB_EV->>REDIS_S: 8. Push vers le Redis Stream (ex: stream:job_success)
-    
-    REDIS_S->>PP: 9. Le Post-Processor écoute le stream
-    PP->>DB_OUT: 10. Supprime définitivement (Hard Delete) le job de jobs_outbox
 ```
 
-Grâce à ce cycle (Saga Pattern), on garantit qu'un Job n'est effacé de la base d'origine que s'il a été traité jusqu'au bout, audité, et confirmé par le réseau.
+Grâce à ce cycle, un Job n'est effacé de la base d'origine que s'il a été traité jusqu'au bout et audité. Le `BaseWorker` (`@volontariapp/workers`) consulte aussi `job_audit` avant exécution : un job déjà `COMPLETED` n'est pas rejoué (garde d'idempotence).
+
+> [!WARNING]
+> **Bug connu (à corriger dans `@volontariapp/post-processors`)** : le trigger émet des événements de type `<domaine>:job:outbox:failure`, mais `JobOutboxFailedPostProcessor` (`packages/post-processors/src/common/job-outbox-failed.post-processor.ts`) ne traite que `job.outbox.failed` ou les types se terminant par `:job:outbox:failed`. Les échecs de jobs ne sont donc jamais traités : le job reste `PENDING` dans `jobs_outbox` et aucun feedback d'échec n'est émis.
 
 ### Schéma Technique des Tables & Déclencheurs SQL
 
-Pour éliminer toute ambiguïté sur la structure de persistance, voici les 3 tables impliquées dans chaque base PostgreSQL de microservice :
+Les 3 tables ci-dessous existent dans chaque base PostgreSQL de microservice. Elles sont créées par les migrations communes (`src/migrations/common/`), synchronisées entre services par `sync-migrations.sh`. Les statuts de `jobs_outbox` et `event_queue` suivent l'enum `OutboxStatus` (`@volontariapp/database`), ceux de `job_audit` l'enum `JobAuditStatus`.
 
 #### 1. Table `jobs_outbox` (Stockage temporaire de la tâche)
 | Colonne | Type | Description |
 | :--- | :--- | :--- |
-| `id` | `UUID` (PK) | Identifiant unique généré à l'insertion |
-| `type` | `VARCHAR(255)` | Type de job issu de `JobMessagingType` (ex: `event.sync_calendar`) |
-| `emitter` | `VARCHAR(100)` | Nom du microservice émetteur (ex: `ms-event`) |
-| `emitter_id` | `VARCHAR(100)` | ID de l'initiateur (ex: `userId` ou `orgId`) |
-| `target` | `VARCHAR(100)` | Nom de la file BullMQ cible (ex: `events-queue`) |
-| `payload` | `JSONB` | Données nécessaires à l'exécution de la tâche |
-| `scheduled_at` | `TIMESTAMPTZ` | Date d'exécution souhaitée (exécution immédiate ou différée) |
-| `status` | `VARCHAR(50)` | Statut du job : `pending` \| `working` \| `done` \| `failed` |
-| `retry_count` | `INTEGER` | Nombre de tentatives d'exécution |
-| `created_at` | `TIMESTAMPTZ` | Horodatage de création |
-| `updated_at` | `TIMESTAMPTZ` | Dernier changement d'état |
+| `id` | `uuid` (PK) | Identifiant unique généré à l'insertion |
+| `type` | `varchar(100)` | Type de job issu de `JobMessagingType` (ex : `post.publish_post`) |
+| `emitter` | `varchar(100)` | Nom du microservice émetteur (ex : `ms-event`) |
+| `emitterId` | `uuid` | Identifiant de l'initiateur |
+| `target` | `varchar(100)` | Nom de la file BullMQ cible (ex : `events-queue`) |
+| `payload` | `jsonb` | Données nécessaires à l'exécution de la tâche |
+| `scheduled_at` | `timestamp` | Date d'exécution souhaitée |
+| `status` | `varchar(20)` | `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED` |
+| `attempts` | `integer` | Nombre de tentatives de dispatch |
+| `lastError` | `text` | Dernière erreur de dispatch |
+| `traceId` | `uuid` | Identifiant de trace |
+| `created_at` / `updated_at` | `timestamp` | Horodatages |
 
 #### 2. Table `job_audit` (Traçabilité & Historique d'exécution)
 | Colonne | Type | Description |
 | :--- | :--- | :--- |
-| `id` | `UUID` (PK) | Identifiant unique d'audit |
-| `job_id` | `UUID` | Référence vers `jobs_outbox.id` |
-| `type` | `VARCHAR(255)` | Type de job |
-| `status` | `VARCHAR(50)` | Statut terminal : `working` -> `done` ou `failed` |
-| `original_payload` | `JSONB` | Copie du payload d'origine |
-| `error_details` | `JSONB` | Stacktrace et message d'erreur si `failed` |
-| `started_at` | `TIMESTAMPTZ` | Prise en charge par le `BaseWorker` |
-| `completed_at` | `TIMESTAMPTZ` | Fin d'exécution |
+| `id` | `uuid` (PK) | Identifiant unique d'audit |
+| `job_id` | `varchar(100)` (unique) | Référence vers `jobs_outbox.id` |
+| `job_type` | `varchar(255)` | Type de job |
+| `status` | `varchar(20)` | `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED` |
+| `worker_id` | `varchar(100)` | Worker qui a pris le job |
+| `emitter` | `varchar(100)` | Microservice émetteur du job (sert de préfixe au stream de retour) |
+| `current_attempt` | `integer` | Tentative courante |
+| `result_payload` | `jsonb` | Résultat du handler (dont `originalPayload`) |
+| `error_message` / `error_stack` | `text` | Erreur si `FAILED` |
+| `started_at` / `finished_at` | `timestamp` | Début et fin d'exécution |
+| `created_at` / `updated_at` | `timestamp` | Horodatages |
 
-#### 3. Table `event_outbox` (Événements distribués à propager)
+#### 3. Table `event_queue` (Événements distribués à propager)
 | Colonne | Type | Description |
 | :--- | :--- | :--- |
-| `id` | `UUID` (PK) | Identifiant unique de l'événement |
-| `type` | `VARCHAR(255)` | Type issu de `EventMessagingType` (ex: `event.created`) |
-| `emitter` | `VARCHAR(100)` | Microservice émetteur |
-| `emitter_id` | `VARCHAR(100)` | Initiateur de l'événement |
-| `target_services`| `JSONB` / `TEXT[]` | Liste des streams cibles (ex: `['stream:event-created']`) |
-| `payload` | `JSONB` | Payload de l'événement (`before`, `after`, `metadata`) |
-| `status` | `VARCHAR(50)` | Statut d'acheminement (`pending`, `processed`) |
-| `created_at` | `TIMESTAMPTZ` | Date de persistance |
+| `id` | `uuid` (PK) | Identifiant unique de l'événement |
+| `type` | `varchar(100)` | Type issu de `EventMessagingType` (ex : `event.created`) |
+| `emitter` | `varchar(100)` | Microservice émetteur |
+| `emitterId` | `uuid` | Initiateur de l'événement |
+| `target_services` | `varchar[]` | Streams Redis cibles (ex : `['event:created']`), valeurs de l'enum `Streams` (`@volontariapp/shared`) |
+| `payload` | `jsonb` | Payload de l'événement |
+| `version` | `integer` | Version du schéma de l'événement |
+| `status` | `varchar(20)` | `PENDING`, `PROCESSING`, `COMPLETED`, `FAILED` |
+| `attempts` / `lastError` | `integer` / `text` | Suivi des tentatives de publication |
+| `correlation_id` | `uuid` | Corrélation (Scatter-Gather) |
+| `traceId` | `uuid` | Identifiant de trace |
+| `processed_at` | `timestamp` | Date de publication |
+| `created_at` / `updated_at` | `timestamp` | Horodatages |
 
-#### Le Trigger SQL Automatique (`trg_job_audit_to_event_outbox`)
-Un trigger SQL réside directement dans le schéma de la base :
+#### Le Trigger SQL Automatique (`job_audit_status_trigger`)
+
+Version courante (migration commune `FixJobAuditTriggerTargetServices1781300000000`) :
+
 ```sql
-CREATE OR REPLACE FUNCTION fn_audit_to_event_outbox()
+CREATE OR REPLACE FUNCTION notify_job_audit_status_change()
 RETURNS TRIGGER AS $$
+DECLARE
+  stream_prefix text;
+  event_type text;
 BEGIN
-    IF NEW.status = 'done' THEN
-        INSERT INTO event_outbox (id, type, emitter, emitter_id, target_services, payload, status, created_at)
-        VALUES (
-            gen_random_uuid(),
-            'job.outbox.success',
-            'workers-runner',
-            NEW.job_id::text,
-            ARRAY['stream:job_success'],
-            jsonb_build_object('jobId', NEW.job_id, 'auditId', NEW.id),
-            'pending',
-            NOW()
-        );
-    ELSIF NEW.status = 'failed' THEN
-        INSERT INTO event_outbox (id, type, emitter, emitter_id, target_services, payload, status, created_at)
-        VALUES (
-            gen_random_uuid(),
-            'job.outbox.failed',
-            'workers-runner',
-            NEW.job_id::text,
-            ARRAY['stream:job_failed'],
-            jsonb_build_object('jobId', NEW.job_id, 'auditId', NEW.id, 'error', NEW.error_details),
-            'pending',
-            NOW()
-        );
-    END IF;
-    RETURN NEW;
+  stream_prefix := replace(NEW.emitter, 'ms-', '');
+  IF NEW.status = 'COMPLETED' THEN
+    event_type := stream_prefix || ':job:outbox:success';
+    INSERT INTO event_queue (type, emitter, "emitterId", payload, version, updated_at, target_services)
+    VALUES (
+      event_type,
+      NEW.emitter,
+      NEW.job_id::uuid,
+      jsonb_build_object('before', to_jsonb(OLD), 'after', to_jsonb(NEW)),
+      1,
+      now(),
+      ARRAY[event_type]
+    );
+  ELSIF NEW.status = 'FAILED' THEN
+    event_type := stream_prefix || ':job:outbox:failure';
+    INSERT INTO event_queue (type, emitter, "emitterId", payload, version, updated_at, target_services)
+    VALUES (
+      event_type,
+      NEW.emitter,
+      NEW.job_id::uuid,
+      jsonb_build_object('before', to_jsonb(OLD), 'after', to_jsonb(NEW)),
+      1,
+      now(),
+      ARRAY[event_type]
+    );
+  END IF;
+  RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_job_audit_to_event_outbox
-AFTER UPDATE ON job_audit
+CREATE TRIGGER job_audit_status_trigger
+AFTER UPDATE OF status ON job_audit
 FOR EACH ROW
-WHEN (OLD.status IS DISTINCT FROM NEW.status AND NEW.status IN ('done', 'failed'))
-EXECUTE FUNCTION fn_audit_to_event_outbox();
+EXECUTE FUNCTION notify_job_audit_status_change();
 ```
+
+Pour un job émis par `ms-event`, le type d'événement et le stream cible valent donc `event:job:outbox:success` ou `event:job:outbox:failure` (enum `Streams` : `EVENT_JOB_OUTBOX_SUCCESS`, `EVENT_JOB_OUTBOX_FAILURE`).
+
 
 ---
 
@@ -148,11 +169,11 @@ Lorsqu'un utilisateur clique sur "Créer un Événement", le frontend affiche un
 
 C'est le **Scatter-Gather**.
 
-1. **Scatter (Éparpillement)** : `ms-event` crée l'événement et pousse un message sur le `stream:event-created`.
+1. **Scatter (Éparpillement)** : `ms-event` crée l'événement et pousse un message sur le stream `event:created`.
 2. Plusieurs Post-Processors (indépendants) écoutent ce même stream en parallèle :
    - Le `Post-Processor-Event` va géocoder l'adresse (appel d'une API de cartographie).
    - Le `Post-Processor-Social` va créer l'événement dans le graphe de la base Neo4j.
-3. Chaque processeur publie son résultat de son côté sur le flux de feedback (`stream:ws-event-created-feedback`) avec le même **Correlation_ID**.
+3. Chaque processeur publie son résultat de son côté sur le flux de feedback (`ws:event-created-feedback`) avec le même **Correlation_ID**.
 4. **Gather (Rassemblement)** : Le `ws-service` écoute ces feedbacks. Il sait par configuration qu'il doit attendre **2 réponses** pour cet ID. 
    - Il stocke temporairement l'état dans Redis via `GatherStateService` (clé: `gather:<correlation_id>` avec un TTL de 60s).
    - Dès qu'il reçoit `2/2`, il envoie la notification WebSocket de succès (Done) au Frontend.
