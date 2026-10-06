@@ -2,3 +2,10 @@
 Thumbs.db
 *.log
 *~
+*.bak*
+.env
+*.csv
+*.json
+coaching/*.md
+coaching/*gant*
+scripts/*pycache*

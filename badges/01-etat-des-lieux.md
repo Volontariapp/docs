@@ -29,8 +29,19 @@ Constat du code au moment de la rédaction. Chaque ligne indique le fichier vér
 | `ms-social` stocke un nœud d'événement réduit à `event_id` (`CreateSocialEventCommand`). Les requêtes de participation renvoient uniquement des `ids`. | `ms-social` ne peut pas répondre à "combien d'événements terminés de type éco ?". |
 | Aucun client gRPC sortant dans `pp-user`. | Pas de moyen actuel d'interroger `ms-social` depuis `pp-user`. |
 
-## Points non vérifiés
+## Points tranchés
 
-- Comment un post-processor obtient un `INTERNAL_TOKEN` pour appeler un `ms-*` (règle de moindre privilège, `GrpcInternalGuard`).
-- Si `pp-user` peut utiliser les repositories de `@volontariapp/domain-user` (la connexion Postgres existe, l'usage du package n'est pas vérifié).
-- Les noms exacts des valeurs de `Streams` (seules les clés `EVENT_SUCCESSFULLY_CREATED` et `POST_SUCCESSFULLY_CREATED` sont confirmées).
+| Point | Décision | Détail technique |
+| :--- | :--- | :--- |
+| Token interne pour appeler `ms-social` | `pp-user` forge son propre token (JWT RS256, `x-internal-token`). | [10](10-guide-technique-pp-user.md), section 3. |
+| Écriture des badges | `pp-user` utilise `@volontariapp/domain-user` et une transaction unique. | [10](10-guide-technique-pp-user.md), section 6. |
+| Total de pagination | `PaginationResponse.total` existe (vérifié dans `pagination.proto`). | [10](10-guide-technique-pp-user.md), section 5. |
+| Événement créé par un admin pour un tiers | Edge case accepté : le badge va à l'émetteur. | [03](03-evenement-event-creation-successfull.md). |
+| Atomicité Neo4j et outbox | Non atomique (best effort, vérifié). Latence et pertes occasionnelles acceptées. | [10](10-guide-technique-pp-user.md), section 8. |
+
+## Points encore non vérifiés
+
+- Les valeurs exactes des entrées de `Streams` (seules les clés `EVENT_SUCCESSFULLY_CREATED`, `POST_SUCCESSFULLY_CREATED`, `POST_LIKED`, `USER_JOB_OUTBOX_SUCCESS` sont confirmées, `POST_LIKED = 'post-liked'`).
+- Un `groupName` distinct de celui de `pp-event` suffit-il pour lire `EVENT_SUCCESSFULLY_CREATED` en parallèle (comportement standard de Redis Streams, non testé ici).
+- Valeur minimale acceptée pour `PaginationRequest.limit`.
+- Existence d'un mécanisme de listeners WebSocket dans `nativapp`.

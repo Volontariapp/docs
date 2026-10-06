@@ -71,7 +71,7 @@ Aucun compteur : un seuil de 1 ne nécessite aucune mesure.
 | Saga en échec | `event.creation_failed` est émis, `event.creation_successfull` ne l'est pas : aucun badge. |
 | Livraison en double | La contrainte unique `(user_id, badge_id)` absorbe le doublon, pas de second `user.badge_awarded`. |
 | `pp-user` indisponible | Le message reste dans le PEL du groupe, il est rejoué au retour. Le badge arrive en retard, jamais perdu. |
-| Événement créé par un admin pour un autre utilisateur | **Point ouvert** : `userId` vaut `emitterId` (l'admin), pas l'organisateur. Le badge irait à l'admin. À trancher : ajouter `organizerId` au payload de succès. |
+| Événement créé par un admin pour un autre utilisateur | **Edge case accepté** : `userId` vaut `metadata.emitterId` (l'admin), pas l'organisateur (`base-gather.post-processor.ts`, `handleCompletion`). Le badge irait à l'admin. Aucun traitement prévu. |
 
 ## À créer
 

@@ -100,7 +100,7 @@ L'erreur `USER_ALREADY_HAS_BADGE` de l'attribution manuelle n'est pas un échec 
 | Wishlist (seuil 10) | gRPC `AdminGetUserWishEvent(userId)`, total de la pagination. | Même raison. |
 | Participation (seuils 1, 5, 10, 20, éco, socio, hybride) | Compteurs incrémentaux dans `ms-user`. | `ms-social` ne connaît ni l'état ni le type des événements. |
 
-La lecture du total dans la pagination suppose que `PaginationResponse` expose un total. Ce point est à confirmer.
+`PaginationResponse` expose bien `total` (vérifié). Demander `page = 1`, `limit = 1` et lire `pagination.total`. Détails, RPC exactes et token interne : [10](10-guide-technique-pp-user.md).
 
 ## 6. Performance
 

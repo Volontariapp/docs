@@ -52,3 +52,4 @@ La source de vérité visuelle est `nativapp/src/components/dataDisplay/badge/ba
 | 07 | [`event.finished`](07-evenement-event-finished.md) | Les 9 badges de participation. |
 | 08 | [`user.badge_awarded`](08-evenement-user-badge-awarded.md) | Push WebSocket et comportement de `nativapp`. |
 | 09 | [Contrats et plan](09-contrats-et-plan.md) | Contrats à créer, règle du STOP, vagues, points ouverts. |
+| 10 | [Guide technique `pp-user`](10-guide-technique-pp-user.md) | Faits vérifiés pour implémenter : token interne, client gRPC, pagination, écriture de badges, outbox, pièges. À lire avant de coder. |
