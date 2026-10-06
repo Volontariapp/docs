@@ -131,17 +131,34 @@ Tu dois mettre à jour le document Word `__TARGET_DOCX__` pour le **Coaching __C
 - **Projection & Gantt** : Planification du **Sprint __SPRINT_PROJ__**
 
 > **IMPORTANT :**
-> Tous les diagrammes de Gantt du **Sprint __SPRINT_PROJ__** ont DÉJÀ été téléchargés et décompressés avec succès dans :
-> `docs/coaching/gantt_sprint___SPRINT_PROJ__/`
-> **TU N'AS PAS BESOIN D'OUVRIR DE NAVIGATEUR NI D'ÉCRIRE DE SCRIPT PLAYWRIGHT.**
-> Concentre-toi directement sur les modifications du document Word via `python3 docs/scripts/modify_docx.py`.
+> - Tous les diagrammes de Gantt du **Sprint __SPRINT_PROJ__** ont DÉJÀ été téléchargés et décompressés avec succès dans :
+>   `docs/coaching/gantt_sprint___SPRINT_PROJ__/`
+> - **TU N'AS PAS BESOIN D'OUVRIR DE NAVIGATEUR NI D'ÉCRIRE DE SCRIPT PLAYWRIGHT.**
+> - Concentre-toi directement sur l'analyse des données et les modifications du document Word via `python3 docs/scripts/modify_docx.py`.
 
 ## Fichiers disponibles
-- Document Word à modifier : `__TARGET_DOCX__`
+- Document Word modèle à modifier : `__TARGET_DOCX__`
 - Récapitulatif JSON des tâches terminées du Sprint __SPRINT_BILAN__ : `__JSON_OUTPUT__`
 - CSV exporté du Backlog Sprint __SPRINT_PROJ__ : `__CSV_OUTPUT__`
 - Dossier des diagrammes de Gantt PNG du Sprint __SPRINT_PROJ__ : `docs/coaching/gantt_sprint___SPRINT_PROJ__/`
 - Outil d'édition DOCX sécurisé : `python3 docs/scripts/modify_docx.py`
+
+---
+
+## CONSIGNES MÉTIER & RÈGLES D'OR
+
+1. **Nom et Thème des Sprints :**
+   - À partir de l'analyse globale de l'ensemble des tâches du backlog (`__JSON_OUTPUT__` et `__CSV_OUTPUT__`), tu dois **déduire et formuler le nom/thème synthétique de chaque sprint** (ex: *Sprint __SPRINT_BILAN__ : Finalisation Stockage de fichiers & Observabilité Datadog*).
+   - Déduis également l'intitulé de mission de chaque membre selon ses réalisations pour remplacer les titres génériques :
+     - `VICTOR AGAHI – <INTITULÉ DE MISSION DÉDUIT>`
+     - `VICTOR GIROUD – <INTITULÉ DE MISSION DÉDUIT>`
+     - `CLÉMENT PASTEAU – <INTITULÉ DE MISSION DÉDUIT>`
+     *(dans le corps du texte ET dans la Table des matières).*
+
+2. **Règle absolue pour le Tableau de Répartition des Tâches :**
+   - **Victor A (Victor Agahi) est le Lead de tout le monde, même de lui-même !**
+   - Dans le tableau de répartition (colonnes : `Tâche` | `Assigné` | `Lead`), la colonne **Lead** doit **TOUJOURS** avoir la valeur **Victor A** pour **TOUTES** les lignes du tableau sans aucune exception (même si la tâche est assignée à Victor G ou à Clément).
+   - Les membres assignés sont désignés par : `Victor A`, `Victor G`, `Clément` (ex: `Victor A & Clément`, `Victor G`, etc.).
 
 ---
 
@@ -161,20 +178,23 @@ python3 docs/scripts/modify_docx.py insert-image "__TARGET_DOCX__" --after-headi
 
 ## ÉTAPE 2 : Rédaction des synthèses techniques du Sprint __SPRINT_BILAN__
 Consulte `__JSON_OUTPUT__` qui contient toutes les tâches terminées du Sprint __SPRINT_BILAN__ :
-1. Pour chaque membre (**Victor Agahi**, **Clément Pasteau**, **Victor Giroud**) :
+1. Déduis les grands axes réalisés et rédige l'introduction générale du bilan du Sprint __SPRINT_BILAN__.
+2. Pour chaque membre (**Victor Agahi**, **Clément Pasteau**, **Victor Giroud**) :
    - Rédige un paragraphe de synthèse technique dense et soigné, exactement dans le style du rapport (vocabulaire d'architecture précis, microservices, gRPC, outbox, workers, CI/CD, React Native, etc.).
-2. Mets à jour la section d'introduction du sprint précédent, le total de charge/heures réalisées, et la conclusion.
+   - Mentionne les métriques chiffrées (heures de charge effective, nombre de tâches finalisées).
 3. Applique ces modifications textuelles sur `__TARGET_DOCX__` via `python3 docs/scripts/modify_docx.py replace`.
 
 ---
 
 ## ÉTAPE 3 : Remplissage de la projection du Sprint __SPRINT_PROJ__
 1. Lis les tâches prévues pour le Sprint __SPRINT_PROJ__ dans `__CSV_OUTPUT__`.
-2. Mets à jour :
-   - Les axes de développement prévus pour le Sprint __SPRINT_PROJ__.
-   - Le tableau de répartition des tâches (Tâche, Assigné, Lead).
-   - Les dates de début et fin du Sprint __SPRINT_PROJ__.
-3. Applique ces mises à jour via `python3 docs/scripts/modify_docx.py replace`.
+2. Déduis le nom du sprint et formule les axes de développement prioritaires.
+3. Remplis :
+   - Les dates de début et fin du Sprint __SPRINT_PROJ__ et la durée en semaines.
+   - Les 3 axes de développement.
+   - Le tableau de répartition des tâches (`Tâche` | `Assigné` | `Lead`), en respectant impérativement : **Lead = Victor A sur toutes les lignes**.
+4. Rédige la conclusion du rapport (confiance, perspectives d'atterrissage).
+5. Applique ces mises à jour via `python3 docs/scripts/modify_docx.py replace`.
 
 ---
 
@@ -183,7 +203,7 @@ Vérifie la cohérence du document avec :
 ```bash
 python3 docs/scripts/modify_docx.py view "__TARGET_DOCX__" --limit 100
 ```
-Assure-toi que toutes les sections, en-têtes, tableaux et images sont en place sans aucune altération de mise en page.
+Assure-toi que toutes les sections, en-têtes, tableaux et images sont en place sans aucune altération de mise en page et qu'aucun tag `[TODO]` ne subsiste.
 EOF
 
 # Remplacer les placeholders dans le prompt de façon portable (macOS / Linux / WSL)
