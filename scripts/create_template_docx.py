@@ -63,8 +63,7 @@ def set_p_text(p, new_text):
 def build_template():
     coaching_dir = Path("docs/coaching")
     src_docx = coaching_dir / "Rapport de suivi coaching 7.docx"
-    dest_docx = coaching_dir / "template_rapport_coaching.docx"
-    alt_docx = coaching_dir / "Rapport de suivi coaching template.docx"
+    dest_docx = coaching_dir / "Rapport de suivi coaching template.docx"
 
     if not src_docx.exists():
         print(f"Erreur : {src_docx} introuvable.", file=sys.stderr)
@@ -256,10 +255,6 @@ def build_template():
             z_out.writestr(name, data)
 
     print(f"✓ Template DOCX finalisé : {dest_docx} ({dest_docx.stat().st_size} octets)")
-    
-    import shutil
-    shutil.copyfile(dest_docx, alt_docx)
-    print(f"✓ Copie conforme : {alt_docx}")
 
 
 if __name__ == "__main__":

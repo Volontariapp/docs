@@ -68,9 +68,9 @@ PREV_DOCX="${COACHING_DIR}/Rapport de suivi coaching ${PREV_COACHING}.docx"
 
 # 3. Préparation du document DOCX
 if [ ! -f "${TARGET_DOCX}" ]; then
-  if [ -f "${COACHING_DIR}/template_rapport_coaching.docx" ]; then
-    echo -e "${BLUE}📄 Duplication depuis le modèle de référence : template_rapport_coaching.docx${NC}"
-    cp "${COACHING_DIR}/template_rapport_coaching.docx" "${TARGET_DOCX}"
+  if [ -f "${COACHING_DIR}/Rapport de suivi coaching template.docx" ]; then
+    echo -e "${BLUE}📄 Duplication depuis le modèle de référence : Rapport de suivi coaching template.docx${NC}"
+    cp "${COACHING_DIR}/Rapport de suivi coaching template.docx" "${TARGET_DOCX}"
     echo -e "${GREEN}✓ Créé : ${TARGET_DOCX}${NC}"
   elif [ -f "${PREV_DOCX}" ]; then
     echo -e "${BLUE}📄 Duplication du template depuis : ${PREV_DOCX}${NC}"
