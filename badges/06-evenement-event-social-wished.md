@@ -2,11 +2,11 @@
 
 **Badge débloqué** : `EVENT_WISHLIST_COUNT_10` (Curieux·se, "Wishlist 10 événements").
 
-**Statut** : **nouvel événement à créer.** `PostUserWishEvent` existe côté `ms-social` (`ParticipationCommandService`) mais n'émet rien.
+**Statut** : **Implémenté et déployé.** Émis par `ms-social` (`ParticipationCommandService` via `@volontariapp/domain-social`), consommé par `EventSocialWishedBadgePostProcessor` dans `pp-user`.
 
 ## Nom
 
-Le nom suit la convention du domaine `social` (`event_social.created`, `post_social.created`). Il est proposé : `event_social.wished`. À valider au moment de la PR `messaging`.
+Le nom suit la convention du domaine `social` (`event_social.created`, `post_social.created`) : `event_social.wished` (stream `event-social-wished`).
 
 ## Scénario nominal
 

@@ -8,8 +8,8 @@
 | Type WebSocket `user.badge_awarded` | `npm-packages` | `messaging/src/websockets/users/` | **Fait** (publié) |
 | Stream `USER_BADGE_AWARDED` | `npm-packages` | `shared/src/enums/streams.enum.ts` | **Fait** (publié) |
 | `event.finished` + `IEventFinishedPayload` (`eventId`, `eventType`) | `npm-packages` | `messaging/src/events/event/payloads.ts` | À créer (Vague 1) |
-| `event_social.wished` + `IEventSocialWishedPayload` | `npm-packages` | `messaging/src/events/social/payloads.ts` | À créer (Vague 1) |
-| Streams `EVENT_FINISHED`, `EVENT_SOCIAL_WISHED` | `npm-packages` | `shared/src/enums/streams.enum.ts` | À créer (Vague 1) |
+| `event_social.wished` + `IEventSocialWishedPayload` | `npm-packages` | `messaging/src/events/social/payloads.ts` | **Fait** (publié) |
+| Streams `EVENT_FINISHED`, `EVENT_SOCIAL_WISHED` | `npm-packages` | `shared/src/enums/streams.enum.ts` | `EVENT_SOCIAL_WISHED` fait, `EVENT_FINISHED` à créer |
 | Migration `badge_progress`, `badge_progress_events` | `ms-user` | `src/migrations/domain/` | À créer (Vague 2) |
 
 Aucun changement de proto n'est nécessaire : `PaginationResponse.total` existe (vérifié, [10](10-guide-technique-pp-user.md) section 5), donc `AdminGetUserLikes` et `AdminGetUserWishEvent` suffisent. Pas de cascade `proto-registry`.
