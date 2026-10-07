@@ -147,7 +147,9 @@ def process_docx_replacements(docx_path: str, replacements: list[tuple[str, str]
         for item in zin.infolist():
             content = zin.read(item.filename)
             if item.filename.startswith('word/') and item.filename.endswith('.xml'):
-                xml_entries[item] = content.decode('utf-8')
+                raw_xml = content.decode('utf-8')
+                sanitized_xml = re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)', '&amp;', raw_xml)
+                xml_entries[item] = sanitized_xml
             else:
                 other_entries[item] = content
 
@@ -249,6 +251,7 @@ def insert_image_after_heading(docx_path: str, heading_query: str, image_path: s
             entries[item.filename] = zin.read(item.filename)
 
     doc_xml = entries['word/document.xml'].decode('utf-8')
+    doc_xml = re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)', '&amp;', doc_xml)
     rels_xml = entries['word/_rels/document.xml.rels'].decode('utf-8')
 
     # 1. Ajouter la relation dans word/_rels/document.xml.rels
@@ -294,11 +297,19 @@ def insert_image_after_heading(docx_path: str, heading_query: str, image_path: s
         print(f"Avertissement : Titre '{heading_query}' non trouvé dans document.xml")
         return False
 
+    skip_placeholder = False
     for idx, part in enumerate(parts):
+        if skip_placeholder and part.startswith('<w:p'):
+            skip_placeholder = False
+            continue
         new_parts.append(part)
         if idx == target_idx:
             new_parts.append(drawing_xml)
             inserted = True
+            for next_idx in range(idx + 1, min(len(parts), idx + 4)):
+                if parts[next_idx].startswith('<w:p') and '[TODO' in parts[next_idx]:
+                    skip_placeholder = True
+                    break
 
     entries['word/document.xml'] = ''.join(new_parts).encode('utf-8')
 
