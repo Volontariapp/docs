@@ -83,7 +83,9 @@ alors attribuer
 | Like puis unlike avant le traitement | Le total lu est celui de l'instant : le badge n'est donné que si 10 likes existent réellement. |
 | Événement `post.liked` jamais écrit | L'écriture outbox de `ms-social` est en best effort : une erreur est journalisée (`warn`) puis ignorée alors que le like Neo4j existe (`interaction.service.ts:67-71`). Le compte étant basé sur l'état, le like suivant relit le total et rattrape le badge. Latence acceptée, aucune réconciliation prévue. |
 
-## À créer
+## Statut d'implémentation
 
-- Un post-processor `PostLikedBadgePostProcessor` dans `pp-user`, groupe de consommation distinct de celui de `ws-service`.
-- Un client gRPC `ms-social` dans `pp-user`, avec token interne (point ouvert, voir [09](09-contrats-et-plan.md)).
+- [x] Un post-processor `PostLikedBadgePostProcessor` dans `pp-user` (stream `Streams.POST_LIKED`, groupe `post-processor-user`).
+- [x] Un client gRPC `ms-social` (`SocialInteractionClient`) dans `pp-user`, avec token interne forgé (`pp-user`, rôle `ADMIN`).
+- [x] Cache Redis `badges:owned:{userId}` pour court-circuiter l'appel gRPC et les requêtes SQL si le badge est déjà possédé.
+- [x] Tests unitaires complets (100% passing).

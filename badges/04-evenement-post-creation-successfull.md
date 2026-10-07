@@ -2,7 +2,7 @@
 
 **Badge débloqué** : `COMMUNITY_POST_COUNT_1` (Première Plume, "Poster 1 post").
 
-**Statut** : l'événement existe déjà (`PostEventMessagingType.POST_CREATION_SUCCESSFULL`). `pp-user` doit ajouter un consommateur.
+**Statut** : **Implémenté et actif** (`PostCreationSuccessfullBadgePostProcessor` dans `pp-user`).
 
 ## Pourquoi pas `post.created`
 
@@ -63,6 +63,7 @@ si "COMMUNITY_POST_COUNT_1" non possede alors attribuer
 | Livraison en double | Absorbée par la contrainte unique. |
 | `pp-user` indisponible | Rejeu depuis le PEL, badge en retard mais jamais perdu. |
 
-## À créer
+## Implémenté
 
-Un post-processor `PostCreationSuccessfullBadgePostProcessor` dans `pp-user`, groupe de consommation propre sur `Streams.POST_SUCCESSFULLY_CREATED`.
+- Post-processor `PostCreationSuccessfullBadgePostProcessor` dans `pp-user` (`post-processors-runner/post-processor-user/src/post-processors/posts/`), groupe de consommation propre sur `Streams.POST_SUCCESSFULLY_CREATED`.
+- Évaluation et outbox gérées dans `BadgeEvaluator.evaluateCommunityPostBadge`.

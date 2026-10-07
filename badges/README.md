@@ -3,7 +3,9 @@
 Ce dossier décrit comment les 13 badges de Volontariapp sont débloqués automatiquement, et comment l'utilisateur est notifié en temps réel.
 
 > [!NOTE]
-> **Statut : Proposition (RFC).** L'état réel du code au moment de la rédaction est décrit dans [01-etat-des-lieux.md](01-etat-des-lieux.md). Les faits vérifiés dans le code sont distingués des éléments proposés (à créer) dans chaque document. Les points non vérifiés sont listés dans [09-contrats-et-plan.md](09-contrats-et-plan.md).
+> **Statut : En cours d'implémentation (3/13 badges déployés et validés en production).**
+> - Badges fonctionnels et vérifiés en production : `EVENT_HOST_COUNT_1` ([03](03-evenement-event-creation-successfull.md)), `COMMUNITY_POST_COUNT_1` ([04](04-evenement-post-creation-successfull.md)), et `SOCIAL_LIKE_COUNT_10` ([05](05-evenement-post-liked.md)).
+> - Prochaine étape : `EVENT_WISHLIST_COUNT_10` ([06](06-evenement-event-social-wished.md)) et les badges de participation ([07](07-evenement-event-finished.md)).
 
 ## Principe en une phrase
 
@@ -23,21 +25,21 @@ Un microservice émet un événement via l'outbox. Le post-processor `pp-user` l
 
 La source de vérité visuelle est `nativapp/src/components/dataDisplay/badge/badge.config.ts`. Le seed backend est `ms-user/src/migrations/domain/1780000000001-SeedDefaultBadges.ts`. Les slugs sont identiques.
 
-| Slug | Nom | Condition | Événement déclencheur | Document |
-| :--- | :--- | :--- | :--- | :--- |
-| `EVENT_HOST_COUNT_1` | Bâtisseur·se | Créer 1 événement | `event.creation_successfull` | [03](03-evenement-event-creation-successfull.md) |
-| `COMMUNITY_POST_COUNT_1` | Première Plume | Poster 1 post | `post.creation_successfull` | [04](04-evenement-post-creation-successfull.md) |
-| `SOCIAL_LIKE_COUNT_10` | Soutien du cœur | Liker 10 posts | `post.liked` | [05](05-evenement-post-liked.md) |
-| `EVENT_WISHLIST_COUNT_10` | Curieux·se | Wishlist 10 événements | `event_social.wished` (nouveau) | [06](06-evenement-event-social-wished.md) |
-| `EVENT_PARTICIPATION_TIER_1` | Premier Pas | 1 événement | `event.finished` (nouveau) | [07](07-evenement-event-finished.md) |
-| `EVENT_PARTICIPATION_TIER_2` | Engagé·e | 5 événements | `event.finished` | [07](07-evenement-event-finished.md) |
-| `EVENT_PARTICIPATION_TIER_3` | Pilier | 10 événements | `event.finished` | [07](07-evenement-event-finished.md) |
-| `EVENT_PARTICIPATION_TIER_4` | Figure locale | 20 événements | `event.finished` | [07](07-evenement-event-finished.md) |
-| `EVENT_SOCIAL_TIER_1` | Cœur Solidaire | 1 événement socio | `event.finished` | [07](07-evenement-event-finished.md) |
-| `EVENT_SOCIAL_TIER_2` | Tisseur·se de liens | 5 événements socio | `event.finished` | [07](07-evenement-event-finished.md) |
-| `EVENT_ECOLOGY_TIER_1` | Graine d'écolo | 1 événement éco | `event.finished` | [07](07-evenement-event-finished.md) |
-| `EVENT_ECOLOGY_TIER_2` | Main Verte | 5 événements éco | `event.finished` | [07](07-evenement-event-finished.md) |
-| `EVENT_HYBRID_ECO_SOCIAL_TIER_1` | Éco-Solidaire | 5 éco et 5 socio | `event.finished` | [07](07-evenement-event-finished.md) |
+| Statut | Slug | Nom | Condition | Événement déclencheur | Document |
+| :---: | :--- | :--- | :--- | :--- | :--- |
+| [x] | `EVENT_HOST_COUNT_1` | Bâtisseur·se | Créer 1 événement | `event.creation_successfull` | [03](03-evenement-event-creation-successfull.md) |
+| [x] | `COMMUNITY_POST_COUNT_1` | Première Plume | Poster 1 post | `post.creation_successfull` | [04](04-evenement-post-creation-successfull.md) |
+| [x] | `SOCIAL_LIKE_COUNT_10` | Soutien du cœur | Liker 10 posts | `post.liked` | [05](05-evenement-post-liked.md) |
+| [ ] | `EVENT_WISHLIST_COUNT_10` | Curieux·se | Wishlist 10 événements | `event_social.wished` (nouveau) | [06](06-evenement-event-social-wished.md) |
+| [ ] | `EVENT_PARTICIPATION_TIER_1` | Premier Pas | 1 événement | `event.finished` (nouveau) | [07](07-evenement-event-finished.md) |
+| [ ] | `EVENT_PARTICIPATION_TIER_2` | Engagé·e | 5 événements | `event.finished` | [07](07-evenement-event-finished.md) |
+| [ ] | `EVENT_PARTICIPATION_TIER_3` | Pilier | 10 événements | `event.finished` | [07](07-evenement-event-finished.md) |
+| [ ] | `EVENT_PARTICIPATION_TIER_4` | Figure locale | 20 événements | `event.finished` | [07](07-evenement-event-finished.md) |
+| [ ] | `EVENT_SOCIAL_TIER_1` | Cœur Solidaire | 1 événement socio | `event.finished` | [07](07-evenement-event-finished.md) |
+| [ ] | `EVENT_SOCIAL_TIER_2` | Tisseur·se de liens | 5 événements socio | `event.finished` | [07](07-evenement-event-finished.md) |
+| [ ] | `EVENT_ECOLOGY_TIER_1` | Graine d'écolo | 1 événement éco | `event.finished` | [07](07-evenement-event-finished.md) |
+| [ ] | `EVENT_ECOLOGY_TIER_2` | Main Verte | 5 événements éco | `event.finished` | [07](07-evenement-event-finished.md) |
+| [ ] | `EVENT_HYBRID_ECO_SOCIAL_TIER_1` | Éco-Solidaire | 5 éco et 5 socio | `event.finished` | [07](07-evenement-event-finished.md) |
 
 ## Navigation
 

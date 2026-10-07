@@ -2,14 +2,15 @@
 
 ## 1. Contrats à créer
 
-| Contrat | Repo | Fichier cible | Utilisé par |
+| Contrat | Repo | Fichier cible | Statut |
 | :--- | :--- | :--- | :--- |
-| `event.finished` + `IEventFinishedPayload` (`eventId`, `eventType`) | `npm-packages` | `messaging/src/events/event/payloads.ts` | `ms-event` (émet), `pp-user` (consomme) |
-| `event_social.wished` + `IEventSocialWishedPayload` | `npm-packages` | `messaging/src/events/social/payloads.ts` | `ms-social` (émet), `pp-user` (consomme) |
-| `user.badge_awarded` + `IUserBadgeAwardedPayload` (`userId`, `badges[]`) | `npm-packages` | `messaging/src/events/user/payloads.ts` | `pp-user` (émet), `ws-service` (consomme) |
-| Type WebSocket `user.badge_awarded` | `npm-packages` | `messaging/src/websockets/users/` | `ws-service`, `nativapp` |
-| Streams `EVENT_FINISHED`, `EVENT_SOCIAL_WISHED`, `USER_BADGE_AWARDED` | `npm-packages` | `shared/src/enums/streams.enum.ts` | outbox runners, post-processors |
-| Migration `badge_progress`, `badge_progress_events` | `ms-user` | `src/migrations/domain/` | `pp-user` |
+| `user.badge_awarded` + `IUserBadgeAwardedPayload` (`userId`, `badges[]`) | `npm-packages` | `messaging/src/events/user/payloads.ts` | **Fait** (publié) |
+| Type WebSocket `user.badge_awarded` | `npm-packages` | `messaging/src/websockets/users/` | **Fait** (publié) |
+| Stream `USER_BADGE_AWARDED` | `npm-packages` | `shared/src/enums/streams.enum.ts` | **Fait** (publié) |
+| `event.finished` + `IEventFinishedPayload` (`eventId`, `eventType`) | `npm-packages` | `messaging/src/events/event/payloads.ts` | À créer (Vague 1) |
+| `event_social.wished` + `IEventSocialWishedPayload` | `npm-packages` | `messaging/src/events/social/payloads.ts` | À créer (Vague 1) |
+| Streams `EVENT_FINISHED`, `EVENT_SOCIAL_WISHED` | `npm-packages` | `shared/src/enums/streams.enum.ts` | À créer (Vague 1) |
+| Migration `badge_progress`, `badge_progress_events` | `ms-user` | `src/migrations/domain/` | À créer (Vague 2) |
 
 Aucun changement de proto n'est nécessaire : `PaginationResponse.total` existe (vérifié, [10](10-guide-technique-pp-user.md) section 5), donc `AdminGetUserLikes` et `AdminGetUserWishEvent` suffisent. Pas de cascade `proto-registry`.
 

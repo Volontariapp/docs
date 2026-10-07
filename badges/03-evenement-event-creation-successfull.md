@@ -2,7 +2,7 @@
 
 **Badge débloqué** : `EVENT_HOST_COUNT_1` (Bâtisseur·se, "Créer 1 événement").
 
-**Statut** : l'événement existe déjà. `pp-user` doit ajouter un consommateur.
+**Statut** : **Implémenté et actif** (`EventCreationSuccessfullBadgePostProcessor` dans `pp-user`).
 
 ## Pourquoi cet événement et pas `event.created`
 
@@ -73,7 +73,7 @@ Aucun compteur : un seuil de 1 ne nécessite aucune mesure.
 | `pp-user` indisponible | Le message reste dans le PEL du groupe, il est rejoué au retour. Le badge arrive en retard, jamais perdu. |
 | Événement créé par un admin pour un autre utilisateur | **Edge case accepté** : `userId` vaut `metadata.emitterId` (l'admin), pas l'organisateur (`base-gather.post-processor.ts`, `handleCompletion`). Le badge irait à l'admin. Aucun traitement prévu. |
 
-## À créer
-
-- Un post-processor `EventCreationSuccessfullBadgePostProcessor` dans `pp-user`, avec son propre groupe de consommation sur le stream `Streams.EVENT_SUCCESSFULLY_CREATED`.
-- Aucune modification de `ws-service` : un stream Redis accepte plusieurs groupes de consommation (1:N). À confirmer au moment de l'implémentation.
+## Implémenté
+ 
+- Post-processor `EventCreationSuccessfullBadgePostProcessor` dans `pp-user` (`post-processors-runner/post-processor-user/src/post-processors/events/`), groupe de consommation propre sur le stream `Streams.EVENT_SUCCESSFULLY_CREATED`.
+- Évaluation et outbox gérées dans `BadgeEvaluator.evaluateEventHostBadge`.

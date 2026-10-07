@@ -2,7 +2,7 @@
 
 Dernier maillon commun : il notifie le client qu'un ou plusieurs badges viennent d'être gagnés.
 
-**Statut** : **nouvel événement à créer**, avec son type WebSocket et son post-processor dans `ws-service`.
+**Statut** : **Implémenté et opérationnel de bout en bout** (`messaging`, `ws-service` et `nativapp`).
 
 ## Un message par passage de `pp-user`
 
@@ -28,34 +28,27 @@ sequenceDiagram
     Note right of WS: Meme principe que PostLikedPostProcessor :<br/>pas de gather, push direct a l'utilisateur
     WS--)NA: WebSocket user.badge_awarded {badges[]}
     NA->>Q: invalide la query du profil
-    NA->>NA: file d'attente de modales (une par badge, ou carrousel)
+    NA->>NA: file d'attente de modales (badgeAwardedBus)
 ```
 
-## Contrats à créer
+## Contrats (Implémentés)
 
 | Contrat | Contenu |
 | :--- | :--- |
-| `UserEventMessagingType.USER_BADGE_AWARDED = 'user.badge_awarded'` | Événement outbox. |
-| `IUserBadgeAwardedPayload` | `userId: string`, `badges: IBadgePayload[]`. `IBadgePayload` existe déjà dans `messaging/src/events/user/payloads.ts` (`id`, `name`, `slug`, `description`, `iconPath?`). |
-| Type WebSocket `user.badge_awarded` | À ajouter dans `messaging/src/websockets/users/` et dans `WebsocketEventRegistry`. |
-| Stream | Entrée dans `Streams` (`shared`). |
+| `UserEventMessagingType.USER_BADGE_AWARDED = 'user.badge_awarded'` | Événement outbox (`messaging`). |
+| `IUserBadgeAwardedPayload` | `userId: string`, `badges: IBadgePayload[]` (`messaging`). |
+| Type WebSocket `user.badge_awarded` | `WebsocketMessagingType.USER_BADGE_AWARDED` (`messaging`). |
+| Stream | `Streams.USER_BADGE_AWARDED` (`shared`). |
 
-## Côté `ws-service`
+## Côté `ws-service` (Implémenté)
 
-Un post-processor `UserBadgeAwardedPostProcessor`, calqué sur `PostLikedPostProcessor` (`ws-service/src/post-processors/posts/interactions/post-liked.post-processor.ts`) : lire le payload, résoudre l'utilisateur cible (`payload.userId`), appeler `NotificationService`. Aucun `gather_state`.
+`UserBadgeAwardedPostProcessor` (`ws-service/src/post-processors/users/user-badge-awarded.post-processor.ts`) : lit le payload, résout l'utilisateur cible (`userId`), appelle `NotificationService.notifyUser(targetUserId, WebsocketMessagingType.USER_BADGE_AWARDED, ...)`.
 
-## Côté `nativapp`
+## Côté `nativapp` (Implémenté)
 
-Éléments existants (vérifiés) :
-
-- `Badge`, `BadgeMedallion` et `BadgeModal` (`components/dataDisplay/badge/`), alimentés par `BADGE_REGISTRY` selon le slug.
-- `resolveBadgeVariant` associe un badge reçu de l'API à un variant, avec un rendu de secours si le slug est inconnu.
-
-À créer :
-
-1. Un listener du type WebSocket `user.badge_awarded` (non vérifié : la présence d'un mécanisme de listeners dans `nativapp` doit être confirmée avant de coder).
-2. L'invalidation de la query du profil (TanStack Query), pour que `ProfileBadges` affiche les nouveaux badges.
-3. La présentation : une file de modales (une par badge) ou un carrousel unique. Choix de design à trancher.
+1. Listener WebSocket `WebsocketMessagingType.USER_BADGE_AWARDED` dans `nativapp/src/hooks/useNotificationHandlers.ts`.
+2. Invalidation de `PROFILE_QUERY_KEY` (TanStack Query) pour rafraîchir les badges du profil.
+3. Émission sur `badgeAwardedBus.emit(data.badges)` et toast de félicitations.
 
 ## Scénarios d'erreur
 
