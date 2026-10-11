@@ -1,84 +1,137 @@
 # 02 - Architecture cible
 
-## Vue d'ensemble
+## 1. Vue d'ensemble
 
-Deux chemins totalement séparés : **écriture asynchrone** (calcul) et **lecture synchrone** (consultation). Ils ne communiquent que par Redis.
+Deux chemins séparés : **écriture asynchrone** (calcul) et **lecture synchrone** (consultation). Ils ne communiquent que par la base de `ms-affinity`.
 
 ```mermaid
 flowchart LR
-    subgraph Declencheurs
-        UC[user:created]
+    subgraph Declencheurs[Evenements de la plateforme]
+        UC[social:user<br/>type user.created]
         EC[event:created]
         EW[event-social-wished / unwished]
         EF[event:finished]
     end
 
-    subgraph Emission
-        PPS[post-processor-social]
-        OBX[(jobs_outbox ms-social)]
-        RUN[outbox-runners]
+    subgraph AffinityDomain[Domaine affinity]
+        PPA[post-processor-affinity]
+        OBX[(jobs_outbox<br/>DB ms-affinity)]
+        ORA[outbox-affinity]
+        Q[(affinity-queue<br/>fallback-affinity-queue<br/>BullMQ Redis)]
+        W[worker-affinity]
+        DB[(PostgreSQL ms-affinity<br/>affinity_score, affinity_run)]
+        MSA[ms-affinity<br/>gRPC lecture]
     end
 
-    subgraph Calcul
-        Q[(social-queue BullMQ)]
-        W[worker-social<br/>ComputeEventMatchingHandler]
-        N[(Neo4j ms-social)]
-        ME[ms-event gRPC<br/>texte des evenements]
-        J[Jev<br/>port MatchingScorer]
+    subgraph Externes[Dependances en lecture seule]
+        MSS[ms-social<br/>graphe Neo4j]
+        MSE[ms-event<br/>texte des evenements]
+        JEV[Jev<br/>api.typesafe.ai]
     end
 
-    R[(Redis<br/>matching:userId)]
+    UC --> PPA
+    EC --> PPA
+    EW --> PPA
+    EF --> PPA
+    PPA --> OBX --> ORA --> Q --> W
+    W -->|AdminGet*| MSS
+    W -->|searchEvents par ids| MSE
+    W -->|POST /v1/systemone| JEV
+    W -->|transaction| DB
+    MSA --> DB
 
-    subgraph Lecture
-        GW[api-gateway<br/>GET /events/matching]
-        MS[ms-social<br/>GetMatchedEventIds]
-    end
-
-    UC --> PPS
-    EC --> PPS
-    EW --> PPS
-    EF --> PPS
-    PPS --> OBX --> RUN --> Q --> W
-    W --> N
-    W --> ME
-    W --> J
-    W --> R
-
-    GW --> MS --> R
-    MS -. fallback .-> N
-    GW --> ME
+    GW[api-gateway<br/>GET /affinity/events] --> MSA
+    GW --> MSE
+    MSA -. si aucune liste .-> OBX
+    W -. fin de job .-> WS[ws-service] -. WebSocket .-> APP[nativapp]
 ```
 
-## Responsabilités
+## 2. Déployables du nouveau domaine
 
-| Composant | Rôle | Statut |
-| :--- | :--- | :--- |
-| `post-processor-social` | Écoute les flux, écrit un job `social.compute_event_matching` dans `jobs_outbox` | Existe, à étendre |
-| `outbox-runners` | Pousse le job vers `social-queue` (aucun code à écrire, voir `volontariapp-implement-async-job-flow`) | Existe |
-| `worker-social` | Exécute le handler : candidats, texte, score, écriture Redis | Existe, handler à créer |
-| `domain-social` | Fournit `ParticipationService` (candidats et historique) ; hébergera le port `MatchingScorer` | Existe, à étendre |
-| Adaptateur Jev | Implémente `MatchingScorer` (appel HTTP vers l'API TypeSafe AI) | À créer |
-| `ms-social` | Nouvelle RPC de lecture `GetMatchedEventIds` (Redis, repli Neo4j) | À créer |
-| `api-gateway` | Route `GET /events/matching` : ordre de `ms-social`, contenu de `ms-event` | À créer |
-
-## Pourquoi `ms-social` est propriétaire du matching
-
-Le graphe, les filtres de blocage et la reco structurelle sont déjà dans `ms-social`. Faire porter le matching par `ms-event` l'obligerait à lire Neo4j (interdit par l'isolation des bases) ou à rappeler `ms-social` en gRPC à chaque calcul. Le texte des événements, lui, est lu en gRPC depuis `ms-event` : c'est la seule dépendance sortante du worker, et elle est en lecture seule.
-
-## Stockage Redis
-
-| Clé | Type | Contenu | TTL |
+| Déployable | Emplacement | Rôle | Pattern copié de |
 | :--- | :--- | :--- | :--- |
-| `matching:{userId}` | sorted set | membre = `eventId`, score = score final (0 à 1) | 24 h |
-| `matching:meta:{userId}` | hash | `computedAt` (ISO), `source` (`MATCHING` ou `STRUCTURAL_ONLY`), `version` (entier de formule), `candidateCount` | 24 h |
-| `matching:active` | set | `userId` ayant une liste (sert au fan-out d'un nouvel événement) | aucun, nettoyé par le handler |
+| `ms-affinity` | `ms-affinity/` | API gRPC de lecture (`GetAffinityEvents`), commande `RequestAffinityRefresh`, écriture du job à la demande, propriétaire de la base | `ms-social/` |
+| `outbox-affinity` | `outbox-runners/outbox-affinity/` | Pousse `jobs_outbox` vers BullMQ et `event_queue` vers les streams | `outbox-runners/outbox-social/` |
+| `worker-affinity` | `workers-runners/worker-affinity/` | Exécute les handlers de calcul et de fan-out | `workers-runners/worker-social/` |
+| `post-processor-affinity` | `post-processors-runner/post-processor-affinity/` | Écoute les flux de la plateforme et crée les jobs | `post-processors-runner/post-processor-social/` |
+| `@volontariapp/domain-affinity` | `npm-packages/packages/domain-affinity/` | Entités, repositories TypeORM, services de score structurel, port `AffinityScorer`, migrations | `packages/domain-social/` |
+| contrats gRPC | `proto-registry/proto/volontariapp/affinity/` | `affinity.{proto,command,query,responses,services}.proto` | dossier `social/` |
+| manifestes | `deploy/apps/base/ms-affinity/`, `deploy/infrastructure/databases/ms-affinity/` | Déploiements, service, base | `ms-social` |
 
-Règles :
+Le partage de code reste **vertical** : `ms-affinity`, `worker-affinity` et `post-processor-affinity` importent `domain-affinity`, conformément à `docs/Monorepo-Structure.md`. **`outbox-affinity` n'en a pas besoin** (`outbox-runners/outbox-social/package.json` ne dépend pas de `domain-social`) : il n'utilise que les paquets techniques (`outbox`, `database`, `messaging`). Aucun autre domaine n'importe `domain-affinity`.
 
-- **Écriture atomique** : le handler construit `matching:{userId}:tmp`, puis fait `RENAME` vers `matching:{userId}`. Un lecteur ne voit jamais une liste à moitié écrite.
-- **Pas de nettoyage par événement** : un événement supprimé ou terminé reste dans les listes jusqu'à expiration. C'est acceptable car la route gateway recharge les événements depuis `ms-event` et **ignore les identifiants qui n'existent plus ou ne sont plus publiés**.
-- **Tout est recalculable** : vider Redis ne perd aucune donnée métier.
+Détail de dépôts (vérifié) : `outbox-runners/`, `workers-runners/` et `post-processors-runner/` sont **chacun un seul dépôt git** (avec `.gitmodules`, `.github/workflows/ci.yml` et un `command.sh` qui détecte dynamiquement `outbox-*`, `worker-*`, `post-processor-*`). `outbox-affinity`, `worker-affinity` et `post-processor-affinity` sont donc de **nouveaux dossiers dans des dépôts existants**. Seul `ms-affinity` est un nouveau dépôt.
 
-## Choix de conception notable
+## 3. Propriété des données
 
-Le stockage Redis impose d'ajouter un client Redis à `ms-social` (aucun aujourd'hui). `@volontariapp/bridge` fournit déjà `RedisProvider` (utilisé par `worker-social`). Une alternative sans Redis côté lecture serait de stocker le score dans Neo4j sur une relation `(:SocialUser)-[:MATCHES {score, computedAt}]->(:SocialEvent)` : `ms-social` la lirait nativement, sans nouvelle infrastructure, et le mode « Redis indisponible » disparaîtrait. Elle est écartée par défaut car le Lead Dev a retenu Redis, mais le point reste ouvert (voir [06](06-contrats-et-plan.md)).
+| Donnée | Propriétaire | Copie dans `ms-affinity` ? |
+| :--- | :--- | :--- |
+| Nom, description, date, tags, état, places d'un événement | `ms-event` | **Non.** Lu à l'écriture du score, jamais conservé. Relu par la gateway à chaque lecture. |
+| Participations, souhaits, amis, blocages | `ms-social` (Neo4j) | **Non.** Lu à l'écriture du score. |
+| Pseudo, email, bio, rôle d'un utilisateur | `ms-user` | **Non.** Jamais lu. |
+| `(userId, eventId, score)` et métadonnées du calcul | `ms-affinity` | Oui, c'est la donnée propre du service. |
+
+Règle de conception : **la table d'affinité décide de l'ordre et des candidats, jamais du contenu.** Un événement supprimé, terminé ou modifié ne peut pas produire une donnée fausse à l'écran, seulement une recommandation légèrement périmée.
+
+## 4. Graphe de dépendances
+
+```text
+api-gateway --gRPC--> ms-affinity --(lit)--> sa propre base
+api-gateway --gRPC--> ms-event                      (contenu des evenements)
+
+worker-affinity --gRPC (Admin*)--> ms-social         (candidats, historique, amis)
+worker-affinity --gRPC----------> ms-event           (texte des evenements)
+worker-affinity --gRPC----------> ms-post            (feed : posts, commentaires ; voir 10 a 12)
+api-gateway     --gRPC----------> ms-post            (feed : contenu des posts)
+worker-affinity --HTTPS---------> api.typesafe.ai    (Jev)
+worker-affinity --SQL-----------> base ms-affinity
+```
+
+Sens unique : `ms-social` et `ms-event` ne connaissent pas `ms-affinity`. Seule la gateway l'appelle. Aucun cycle.
+
+## 5. Responsabilités des composants
+
+| Composant | Fait | Ne fait pas |
+| :--- | :--- | :--- |
+| `post-processor-affinity` | Convertit un événement de flux en demande de calcul (`affinity_request` + `jobs_outbox`) ; héberge aussi les **post-processors communs** `JobOutboxSuccess` et `JobOutboxFailed` (suppression de la ligne `jobs_outbox`, feedback WebSocket) | N'appelle ni Jev, ni `ms-social`, ni `ms-event` |
+| `outbox-affinity` | Dispatch des jobs et événements | Aucune logique métier |
+| `worker-affinity` | Candidats, texte, score, écriture transactionnelle | N'expose aucune API |
+| `ms-affinity` | Lecture d'une liste, écriture du job à la demande, rafraîchissement manuel | N'appelle ni Jev, ni `ms-social`, ni `ms-event` (jamais dans le chemin de lecture) |
+| `api-gateway` | Orchestre : ordre de `ms-affinity`, contenu de `ms-event`, réordonnancement, filtrage | Ne calcule aucun score |
+
+## 6. Cycle complet d'un calcul (séquence)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S as Flux (ex. event-social-wished)
+    participant PP as post-processor-affinity
+    participant DB as DB ms-affinity
+    participant OR as outbox-affinity
+    participant Q as BullMQ
+    participant W as worker-affinity
+    participant SO as ms-social
+    participant EV as ms-event
+    participant J as Jev
+    participant WS as ws-service
+    participant C as nativapp
+
+    S->>PP: message du flux
+    PP->>DB: INSERT jobs_outbox (compute_user_affinity)
+    OR->>DB: pull PENDING (SKIP LOCKED)
+    OR->>Q: push affinity-queue
+    Q->>W: job
+    W->>DB: job_audit PROCESSING
+    W->>DB: lire affinity_run (coalescence: sauter si started_at >= requestedAt)
+    W->>SO: AdminGetUserParticipateEvent, AdminGetUserWishEvent
+    W->>EV: searchEvents(PUBLISHED, start_date_from=now) : candidats + texte
+    W->>SO: AdminGetRecommendedEventIds (autorises par le graphe, amis)
+    W->>J: POST /v1/systemone (1 requete, N questions)
+    J-->>W: probabilites
+    W->>DB: transaction courte: verrou, anti-ecrasement, remplacer affinity_score, upsert affinity_run
+    W->>DB: job_audit COMPLETED
+    DB-->>OR: trigger notify_job_audit_status_change -> event_queue
+    OR->>WS: stream affinity:job:outbox:success, post-processor commun, puis ws:jobs-outbox-success
+    Note over OR,WS: la notification n'existe que si un mapping messaging est ajoute (voir 04, section 9)
+    WS-->>C: notification WebSocket
+```
