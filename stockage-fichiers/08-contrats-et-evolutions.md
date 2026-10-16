@@ -277,6 +277,12 @@ La migration vit dans `ms-storage/src/migrations/domain/`. Les tables communes (
 | `microServices.msStorageUrl` | Adresse gRPC de `ms-storage` (déjà présente dans `ms-post` et `ms-user`). |
 | `storage.attachmentDeadlineMs` | Nouveau : deadline de `ConfirmFileAttachment` (2000). Au-delà, rattachement asynchrone (`ms-post`, `ms-event`) ou 503 (`ms-user`). |
 
+### `api-gateway`
+
+| Clé | Rôle |
+| :--- | :--- |
+| `storage.publicBaseUrl` (env `S3_PUBLIC_BASE_URL`) | Nouveau, optionnel : base des URL publiques, utilisée par `buildPublicFileUrl` pour calculer `avatarUrl` (et plus tard les médias de post et la cover d'événement). **Même valeur que `s3.publicBaseUrl` de `ms-storage`** : dans `deploy`, les deux services la lisent depuis le ConfigMap unique `storage-public-config` (Application `prod-storage-infra`). Absente, la gateway démarre et l'URL est omise avec un avertissement. En local, elle est définie dans les configs `local`, `development` et `test`, jamais dans `default` ni `production`. |
+
 ### `ci-tools`
 
 - Service `ms-storage` du `docker-compose` : variables `S3_*` (dont `S3_SECRET_KEY` aligné sur `MINIO_ROOT_PASSWORD`), `MS_STORAGE_URL`.
