@@ -139,3 +139,23 @@ sequenceDiagram
 ```
 
 Tant que `media_status != READY`, l'auteur reçoit les `fileId` sans URL, et le front affiche un indicateur de traitement.
+
+### Forme de la réponse REST
+
+`POST /posts`, `GET /posts/{id}` et `GET /posts` renvoient la même forme de post (`PostDTO.fromPost` côté `api-gateway`, type `PostWeb` de `@volontariapp/contracts` 4.7.0) :
+
+```json
+{
+  "id": "...",
+  "mediaStatus": "READY",
+  "media": [
+    { "fileId": "9b2f1c52-...", "position": 0, "url": "https://<publicBaseUrl>/post/9b2f1c52-....webp" }
+  ]
+}
+```
+
+- `mediaStatus` vaut `NONE`, `PENDING`, `READY` ou `REJECTED` (chaîne, convertie depuis l'enum proto).
+- `media` est trié par `position`. Un post sans image renvoie `media: []` et `mediaStatus: "NONE"`.
+- `media[].url` n'existe que si `mediaStatus = READY`. Pour `PENDING` et `REJECTED`, la clé est absente (jamais `null`), et la gateway ne calcule rien.
+- Si `storage.publicBaseUrl` (`S3_PUBLIC_BASE_URL`) n'est pas configuré, `url` est aussi absente et un avertissement est journalisé une fois : la réponse n'échoue pas.
+- À la création, la gateway valide `fileIds` (tableau d'au plus 10 UUID, jamais des URL) et `idempotencyKey` (non vide) avant de relayer à `ms-post`. `ms-storage` reste l'autorité sur le nombre et la validité des fichiers.
