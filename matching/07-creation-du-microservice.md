@@ -161,7 +161,7 @@ NetworkPolicies à définir (moindre privilège, `AGENTS.md` section 6) :
 | Fichier | Action |
 | :--- | :--- |
 | hook React Query | `useRankingEvents` (TanStack Query, **exclusivement**, `AGENTS.md` section 5) : appelle `GET /ranking/events`, **discrimine le corps d'un 206** (`data.code === 'FALLBACK_ACTIVATED'`, car axios résout les 2xx : `nativapp/src/api/client.ts:55`), bascule sur la recherche d'événements classique en attendant |
-| `src/hooks/useNotificationHandlers.ts` | handler de la notification de fin de job d'affinité (invalide la requête) |
+| `src/hooks/useNotificationHandlers.ts` | handler de la notification de fin de job de ranking (invalide la requête) |
 | écran liste d'événements | bascule liste normale / recommandée, affichage du score et de la source |
 | composants | respecter le Design System custom (section 3 d'`AGENTS.md`), navigation custom |
 
@@ -169,11 +169,11 @@ NetworkPolicies à définir (moindre privilège, `AGENTS.md` section 6) :
 
 Le détail est en [12](12-feed-plan-et-risques.md) section 1. En résumé, en plus des sections A à K :
 
-- **A** (`proto-registry`) : `ListRecentPostsByAuthors`, `ListPostsByIds`, `ListCommentsByAuthor` (paquet `post`), `GetRankingPosts`, `list_kind` dans `RequestRankingRefresh`, `RANKING_SOURCE_COLD_START`.
+- **A** (`proto-registry`) : `ListRecentPostsByAuthors`, `ListPostsByIds`, `ListCommentsByAuthor` (paquet `post`), `GetRankingFeed`, `list_kind` dans `RequestRankingRefresh`, `RANKING_SOURCE_COLD_START`.
 - **B** (`npm-packages`) : `COMPUTE_USER_FEED`, `RankingQueue.FEED`, second mapping WebSocket ; `domain-ranking` : `RankingLikeLog`, `RankingPostScore`.
 - **`ms-post`** (dépôt supplémentaire modifié) : trois handlers, migration d'index `("authorId", "createdAt" DESC)`, tests, `e2e-matrix`.
 - **F** (`worker-ranking`) : `compute-user-feed.handler.ts`, `src/clients/post-query.client.ts` (gRPC vers `ms-post`), troisième file `ranking-feed-queue` (donc une classe `@Processor` de plus).
-- **G** (`post-processor-ranking`) : post-processors `POST_CREATED`, `POST_LIKED`, `POST_UNLIKED` en plus des quatre métier et des deux communs ; `UserCreated` écrit deux demandes dans une seule transaction.
+- **G** (`post-processor-ranking`) : post-processors `POST_CREATED` (fan-out et `ranking_event_mention`), `POST_LIKED` et `POST_UNLIKED` (journal `ranking_like_log`), `POST_DELETED` (suppression de la mention) en plus des quatre métier et des deux communs ; `UserCreated` écrit deux demandes dans une seule transaction.
 - **H** (`api-gateway`) : `GET /ranking/feed`, client `ms-post`.
 - **I** (`deploy`) : NetworkPolicy `worker-ranking` vers `ms-post:3000`, CronJob de purge.
 

@@ -22,7 +22,7 @@ Ce dossier décrit, de bout en bout, un nouveau microservice qui calcule en arri
 **Feed de posts (inclus en V1, décision du 2026-10-18).** Le même service classe aussi les posts selon ce que l'utilisateur aime, commente et suit (`GET /ranking/feed`). Il réutilise la mécanique ci-dessus ; voir les fichiers 10 à 12.
 
 > [!WARNING]
-> **Exception au principe « verdicts dérivés uniquement ».** Le feed impose un **journal de likes daté** (`ranking_like_log`), car le graphe n'a aucune date. C'est une donnée comportementale primaire, non entièrement recalculable. Elle est soumise à une rétention de 90 jours, à la suppression avec le compte (traitée en V1 par `user:deleted:ranking`, [03](03-modele-de-donnees.md) section 5) et à la question du chiffrement au repos ([11](11-feed-conception.md) section 2, [12](12-feed-plan-et-risques.md)).
+> **Exception au principe « verdicts dérivés uniquement ».** Le feed impose un **journal de likes daté** (`ranking_like_log`), car le graphe n'a aucune date. C'est une donnée comportementale primaire, non entièrement recalculable. Elle est soumise à une rétention de 90 jours, à la suppression avec le compte (traitée en V1 par `user:deleted:ranking`, [03](03-modele-de-donnees.md) section 5) et à l'absence de chiffrement (exception documentée : [13](13-decisions-v1.md) décision 30).
 
 ## Navigation
 

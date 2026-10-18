@@ -43,5 +43,5 @@ Règle : un scorer sémantique n'est conservé que s'il améliore l'ordre étiqu
 - Table `ranking_event_embedding(event_id, model, vector, text_hash, computed_at)` : le vecteur n'est recalculé que si `text_hash` change ; les vecteurs d'événements terminés sont purgés.
 - Goût de l'utilisateur = moyenne (éventuellement pondérée par récence) des vecteurs des événements souhaités et participés.
 - Score sémantique = cosinus ramené dans [0, 1], combiné comme le score Jev (`0,5 * structurel + 0,5 * sémantique`, [05](05-scoring-et-jev.md) section 5).
-- Mêmes protections que Jev : texte public uniquement, liste blanche de champs, troncature, aucun identifiant personnel.
+- Mêmes protections que Jev : texte public uniquement, liste blanche de champs, troncature, aucun identifiant personnel. Le vecteur de goût reste un profil agrégé : il ne quitte pas la base de `ms-ranking` si le modèle est local.
 - Le choix du modèle et de l'endroit où il s'exécute (API ou worker) reste à évaluer : un worker doit rester sous son plafond de mémoire.

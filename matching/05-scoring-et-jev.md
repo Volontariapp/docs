@@ -37,7 +37,7 @@ Cas limites :
 | Événement déjà commencé | écarté à la lecture des candidats (`start_date_from = now`, [04](04-flux-asynchrone.md) étape 4) : critère unique `startAt > now` |
 | Nombre de candidats inférieur à la taille de liste | la liste est simplement plus courte |
 
-Les poids et seuils (3 amis, 60 jours) sont des constantes versionnées par `FORMULA_VERSION`. **Toute modification de la formule incrémente la version** ; les listes d'une autre version sont considérées périmées à la lecture ([06](06-lecture-et-206.md)).
+Les poids et seuils (15 km de décroissance, 100 km de coupure, 60 jours d'imminence) sont des constantes versionnées par `FORMULA_VERSION`. **Toute modification de la formule incrémente la version** ; les listes d'une autre version sont considérées périmées à la lecture ([06](06-lecture-et-206.md)).
 
 ### Popularité (`popularity`)
 
@@ -138,6 +138,8 @@ Cette liste est triée de façon stable (par `eventId`) pour que deux calculs id
 
 `userId`, `pseudo`, `email`, `rna`, `passwordHash`, identifiants d'amis, `bio`, coordonnées précises. La `bio` est du texte libre rédigé par l'utilisateur et peut contenir des données personnelles : elle est exclue (option explicite en [09](09-plan-de-livraison.md)). Le texte envoyé est celui d'événements **publics**. Cette règle découle de la section 6 de `AGENTS.md`.
 
+**Ce qui est envoyé, et ce que cela révèle.** Le résumé de goût (section 3.3) décrit les événements que l'utilisateur a souhaités ou participés : sans identifiant, c'est tout de même un **profil de goûts agrégé**, donc une donnée comportementale. Décision par défaut ([13](13-decisions-v1.md) décision 33) : envoi tel quel, trié de façon stable, texte public uniquement ; mélanger l'ordre n'apporte aucune protection et empêche de reproduire un appel. **Condition avant d'activer Jev** : obtenir la politique de conservation de TypeSafe AI. Si elle est insatisfaisante, repli : n'envoyer que les parts de type et les tags les plus fréquents (moins précis, moins sensible).
+
 La page de référence ne dit rien sur la conservation des données par le fournisseur : tant que ce n'est pas établi, cette liste blanche est la protection.
 
 Limite de la liste blanche de **champs** : le contenu de `name`, `description` et `tags` est rédigé par des utilisateurs et peut contenir des données personnelles. Mesures complémentaires : troncature (200 caractères), passage dans le masque de `@volontariapp/logger` avant envoi, borne de longueur et échappement des séparateurs, et détection de scores extrêmes répétés pour un même organisateur (tentative de manipulation du classement).
@@ -195,8 +197,8 @@ Avant de présenter le score comme fiable :
 1. Constituer un petit jeu étiqueté (par exemple 20 couples profil/événement jugés à la main : pertinent, neutre, hors sujet).
 2. Vérifier que le classement obtenu les respecte (tests manuels documentés, pas nécessairement automatisés).
 3. Mesurer la latence réelle d'une requête de 30 questions et ajuster `JEV_TIMEOUT_MS` (la valeur de 10 s est provisoire : la documentation n'en donne pas) et `RANKING_JEV_CANDIDATES`.
-5. Prévoir un budget quotidien d'appels et un coupe-circuit (circuit breaker) dans l'adaptateur : après N échecs consécutifs, passer directement en repli structurel pendant une durée donnée.
-4. Vérifier le plafond de questions par requête.
+4. Prévoir un budget quotidien d'appels et un coupe-circuit (circuit breaker) dans l'adaptateur : après N échecs consécutifs, passer directement en repli structurel pendant une durée donnée.
+5. Vérifier le plafond de questions par requête.
 
 Les performances annoncées par le fournisseur (70 à 500 ms, 0,042 $ par million de tokens d'entrée) sont des chiffres du vendeur : à confirmer par la mesure.
 

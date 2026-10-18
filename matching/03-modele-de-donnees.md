@@ -8,7 +8,7 @@ Une base PostgreSQL dédiée, isolée, comme tout microservice (`AGENTS.md` sect
 
 Précisions vérifiées sur `sync-migrations.sh` :
 
-- Le tableau est `SERVICES=("user" "social" "post" "event")` (ligne 14) ; `ms-storage` n'y figure pas. Il faut ajouter `"ranking"`.
+- Le tableau est `SERVICES=("user" "social" "post" "event")` (ligne 15) ; `ms-storage` n'y figure pas. Il faut ajouter `"ranking"`.
 - Le script copie **tout** `ms-X/src/migrations` vers `npm-packages/packages/domain-X/src/test/migrations` et exige que `src/config/data-source.ts` du service référence ces migrations (comme `ms-social/src/config/data-source.ts`). `ms-ranking` doit donc avoir son propre `data-source.ts`.
 
 Le trigger déduit le stream du champ `emitter` (`replace(NEW.emitter, 'ms-', '')`). **Tout job écrit dans cette base, quel que soit l'auteur (`ms-ranking`, `post-processor-ranking`, `worker-ranking`), doit porter `emitter = 'ms-ranking'`**, sinon le stream de retour est faux et le job n'est jamais nettoyé. Le champ `emitterId` (uuid) vaut le `userId` pour un calcul et l'`eventId` pour un fan-out.
@@ -61,22 +61,31 @@ Résout le problème que `jobs_outbox` ne sait pas dédupliquer : `JobsOutboxEnt
 | Colonne | Type | Rôle |
 | :--- | :--- | :--- |
 | `user_id`, `list_kind` | `uuid`, `varchar(10)` PK | Une seule demande ouverte par utilisateur et par type de liste. |
-| `requested_at` | `timestamptz` NOT NULL | Date de la demande la plus récente, **posée par l'horloge de la base** (`now()` de `ms-ranking`). C'est cette valeur, retournée par l'`INSERT`, qui est copiée dans `requestedAt` du job : comparer `requestedAt` (horloge d'un post-processor) à `started_at` (horloge d'un worker) exposerait à un décalage entre hôtes. |
+| `requested_at` | `timestamptz` NOT NULL | Date de la demande la plus récente, posée par l'horloge de la **base** (`clock_timestamp()` de `ms-ranking`). C'est cette valeur, retournée par l'`INSERT` et transmise comme texte (microsecondes conservées), qui devient `requestedAt` du job. Elle se compare à `started_at` **en SQL**, jamais en JavaScript (qui tronque à la milliseconde) : comparer les horloges de deux hôtes exposerait à un décalage. |
 | `reason` | `varchar(30)` NOT NULL | Cause de la demande la plus récente. |
 | `job_enqueued_at` | `timestamptz` NOT NULL | Dernière écriture effective d'un job pour cette demande. |
 
 Règle d'écriture d'une demande (lecture ou post-processor), **dans la même transaction que l'écriture du job** :
 
 ```sql
-INSERT INTO ranking_request (user_id, list_kind, requested_at, reason, job_enqueued_at)
-VALUES ($1, $4, now(), $2, now())
+WITH t AS (SELECT clock_timestamp() AS ts)
+INSERT INTO ranking_request AS r (user_id, list_kind, requested_at, reason, job_enqueued_at)
+SELECT $1, $4, t.ts, $2, t.ts FROM t
 ON CONFLICT (user_id, list_kind) DO UPDATE
-  SET requested_at = now(), reason = EXCLUDED.reason
-  WHERE ranking_request.job_enqueued_at > now() - make_interval(secs => $3)   -- job encore "frais"
-RETURNING requested_at, (xmax = 0) AS inserted;
+  SET requested_at = EXCLUDED.requested_at,
+      reason = EXCLUDED.reason,
+      job_enqueued_at = CASE
+        WHEN $5::boolean
+          OR r.job_enqueued_at <= EXCLUDED.requested_at - make_interval(secs => $3::double precision)
+        THEN EXCLUDED.requested_at     -- nouveau job requis (forcé, ou job probablement perdu)
+        ELSE r.job_enqueued_at         -- un job récent existe déjà
+      END
+RETURNING requested_at, (job_enqueued_at = requested_at) AS needs_job;
 ```
 
-Interprétation : si une demande ouverte a un job écrit récemment (moins de `RANKING_REQUEST_TTL_SECONDS`, 120 s), on **met à jour `requested_at`** sans écrire de nouveau job ; sinon (demande absente, ou job probablement perdu, voir [06](06-lecture-et-206.md) section 6) on écrit un nouveau job et on rafraîchit `job_enqueued_at`. La ligne est supprimée par le worker dans la transaction d'écriture de la liste, si aucune demande plus récente n'est arrivée entre-temps.
+Paramètres : `$1` utilisateur, `$2` cause, `$3` délai `RANKING_REQUEST_TTL_SECONDS` (120), `$4` `list_kind`, `$5` demande forcée (`true` pour `ON_DEMAND` et `MANUAL`).
+
+Interprétation : la ligne est **toujours** mise à jour (`requested_at` avance) ; `needs_job` vaut `true` quand un job doit être écrit (première demande, demande forcée, ou job écrit depuis plus de `RANKING_REQUEST_TTL_SECONDS`, donc probablement perdu : [06](06-lecture-et-206.md) section 3) et `false` quand un job récent existe déjà (la demande est alors fusionnée, sans nouveau job). Le worker supprime la ligne en fin de calcul **seulement si `requested_at <= started_at`**. Si la ligne survit (une demande est arrivée pendant le calcul), il écrit **dans la même transaction** un job de suite (`scheduled_at = now + 30 s`) et rafraîchit `job_enqueued_at` : sans cela, la demande resterait sans job. Tests obligatoires : (1) demande après `started_at` => second calcul ; (2) demande pendant la fenêtre de débounce => un seul job ; (3) job périmé => nouveau job.
 
 ## 2 bis. Tables ajoutées par les décisions du 2026-10-18
 
@@ -86,7 +95,7 @@ Interprétation : si une demande ouverte a un job écrit récemment (moins de `R
 | `ranking_event_feedback` | `user_id`, `event_id` (PK), `action` varchar(10) (`PASS`), `created_at` ; index `(event_id, action)` et `(user_id, created_at DESC)` | swipes à gauche ; exclusion pendant `RANKING_PASS_COOLDOWN_DAYS` et entrée de la popularité ; rétention 90 jours |
 | `ranking_event_wish` | `user_id`, `event_id` (PK), `created_at` ; index `(event_id)` | souhaits actifs, alimentés par `EVENT_SOCIAL_WISHED` (insert `ON CONFLICT DO NOTHING`) et `EVENT_SOCIAL_UNWISHED` (delete) ; un comptage par lignes reste idempotent en cas de rejeu |
 | `ranking_event_mention` | `post_id` PK, `event_id`, `author_id`, `created_at` ; index `(event_id, created_at)` | posts liés à un événement, alimentés par `POST_CREATED` et purgés par `POST_DELETED` ; on compte les auteurs distincts |
-| `ranking_rate_bucket` | `user_id`, `bucket` (PK), `tokens` numeric(6,3), `updated_at` | seau à jetons pour limiter les rafraîchissements à 5 par minute ([13](13-decisions-v1.md) section 3 bis) |
+| `ranking_rate_bucket` | `user_id`, `bucket` (PK), `tokens` numeric(6,3), `updated_at` | seaux à jetons : `REFRESH` (5 par minute, partagé événements et posts) et `LOCATION` (1 par minute) ; requête et tests dans [13](13-decisions-v1.md) section 3 bis |
 
 Pas de clé étrangère (les identifiants appartiennent à d'autres services). Le jeu de données démarre vide au déploiement : les souhaits et mentions antérieurs ne sont pas rétro-alimentés (aucune RPC de comptage), la popularité s'appuie d'abord sur le taux de remplissage fourni par `ms-event`.
 
@@ -167,7 +176,7 @@ Emplacement : `src/migrations/` du microservice, copiées par `sync-migrations.s
 | Suppression d'un compte | Purge par le stream `user:deleted:ranking` (voir ci-dessous). |
 
 > [!WARNING]
-> **La suppression de compte émet désormais `user.deleted` (corrigé le 2026-10-18).** `ms-ranking` doit : (1) obtenir son stream `Streams.USER_DELETED_RANKING = 'user:deleted:ranking'` dans `shared` ; (2) être ajouté aux `targetServices` de `requestDeletionWithUserDeleted` (`domain-user`, modification amont soumise au STOP, à regrouper avec l'étape 2 de [09](09-plan-de-livraison.md)) ; (3) héberger un post-processor de purge (modèle : `post-processor-storage/src/post-processors/user-deleted.post-processor.ts`) qui supprime les lignes du compte dans `ranking_score`, `ranking_post_score`, `ranking_run`, `ranking_request`, `ranking_like_log`, `ranking_event_feedback` et `ranking_user_location` ; (4) participer au gather de `ws-service` : le domaine doit acquitter par un événement `USER_RANKING_DELETED` (ou `USER_RANKING_DELETION_FAILED`) vers `ws:user-deleted-feedback`, et `ws-service` doit l'attendre ; le protocole détaillé, l'ordre de déploiement et le risque d'échec au bout de 60 s sont en [13](13-decisions-v1.md) section 7. Les listes des **autres** utilisateurs qui contiennent des éléments du compte supprimé se corrigent d'elles-mêmes : la gateway n'affiche que ce que `ms-event` et `ms-post` renvoient, et le rafraîchissement périodique les recalcule.
+> **La suppression de compte émet désormais `user.deleted` (corrigé le 2026-10-18).** `ms-ranking` doit : (1) obtenir son stream `Streams.USER_DELETED_RANKING = 'user:deleted:ranking'` dans `shared` ; (2) être ajouté aux `targetServices` de `requestDeletionWithUserDeleted` (`domain-user`, modification amont soumise au STOP, à regrouper avec l'étape 2 de [09](09-plan-de-livraison.md)) ; (3) héberger un post-processor de purge (modèle : `post-processor-storage/src/post-processors/user-deleted.post-processor.ts`) qui supprime les lignes du compte dans toutes les tables `ranking_*` (liste canonique : [13](13-decisions-v1.md) section 7, étape 4) ; (4) participer au gather de `ws-service` : le domaine doit acquitter par un événement `USER_RANKING_DELETED` (ou `USER_RANKING_DELETION_FAILED`) vers `ws:user-deleted-feedback`, et `ws-service` doit l'attendre ; le protocole détaillé, l'ordre de déploiement et le risque d'échec au bout de 60 s sont en [13](13-decisions-v1.md) section 7. Les listes des **autres** utilisateurs qui contiennent des éléments du compte supprimé se corrigent d'elles-mêmes : la gateway n'affiche que ce que `ms-event` et `ms-post` renvoient, et le rafraîchissement périodique les recalcule.
 
 ## 6. Ce que ce modèle évite par rapport à un cache
 

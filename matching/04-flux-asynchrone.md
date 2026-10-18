@@ -41,36 +41,39 @@ Fichiers `src/jobs/ranking/{payloads,queue}.ts`, enregistrés dans `src/jobs/ind
 
 ```typescript
 export enum RankingJobType {
-  COMPUTE_USER_RANKING = 'ranking.compute_user_ranking',
+  COMPUTE_USER_RANKING = 'ranking.compute_user_ranking', // événements
+  COMPUTE_USER_FEED = 'ranking.compute_user_feed',       // posts
   FANOUT_RANKING = 'ranking.fanout',
 }
 
 export type RankingComputeReason =
-  | 'USER_CREATED' | 'WISH_CHANGED' | 'EVENT_CREATED' | 'EVENT_FINISHED'
+  | 'USER_CREATED' | 'WISH_CHANGED' | 'EVENT_CREATED' | 'EVENT_FINISHED' | 'POST_PUBLISHED'
   | 'ON_DEMAND' | 'STALE_REFRESH' | 'MANUAL';
 
-export interface IComputeUserRankingPayload {
+interface IComputePayload {
   userId: string;
   reason: RankingComputeReason;
-  requestedAt: string; // ISO 8601, sert a la coalescence (section 6)
+  requestedAt: string; // texte retourné par l'INSERT de ranking_request (horloge de la base, microsecondes)
 }
+export type IComputeUserRankingPayload = IComputePayload;
+export type IComputeUserFeedPayload = IComputePayload;
 
 export interface IFanoutRankingPayload {
   trigger: 'EVENT_CREATED' | 'EVENT_FINISHED' | 'POST_CREATED';
-  eventId?: string;   // declencheurs d'evenement
+  eventId?: string;   // déclencheurs d'événement
   postId?: string;    // POST_CREATED
   authorId?: string;  // POST_CREATED
   requestedAt: string;
 }
 
 export enum RankingQueue {
-  RANKING = 'ranking-queue',                   // fond (evenements)
-  FEED = 'ranking-feed-queue',                  // fond (posts), voir 11
-  FALLBACK_RANKING = 'fallback-ranking-queue', // ON_DEMAND et MANUAL, tous types de liste
+  RANKING = 'ranking-queue',                     // fond (événements)
+  FEED = 'ranking-feed-queue',                   // fond (posts)
+  FALLBACK_RANKING = 'fallback-ranking-queue',   // ON_DEMAND et MANUAL, tous types de liste
 }
 ```
 
-Le type `COMPUTE_USER_FEED` et le feed de posts sont décrits en [11](11-feed-conception.md). Le champ du fan-out s'appelle `trigger` (et non `kind`) pour ne pas être confondu avec `list_kind`.
+Cette section est la **définition unique** des types de job des deux listes ; [11](11-feed-conception.md) section 7 y renvoie. Le champ du fan-out s'appelle `trigger` (et non `kind`) pour ne pas être confondu avec `list_kind`.
 
 Deux files : un calcul `ON_DEMAND` correspond à un utilisateur qui attend un écran ; il ne doit pas attendre derrière un fan-out.
 
@@ -106,9 +109,9 @@ Le post-processor valide le payload et ignore un message mal formé sans lever d
 Emplacement : `workers-runners/worker-ranking/src/workers/handlers/compute-user-ranking.handler.ts`. Il retourne `{ originalPayload: job.data.payload }`. Le patron de retour à copier est celui de `worker-event` (`IJobHandler` qui retourne `{ originalPayload }`), pas celui de `worker-social` dont l'interface retourne `Promise<void>`.
 
 **Étape 0 : coalescence (sans verrou).**
-Lire `ranking_run`. Si `ranking_run.started_at >= job.requestedAt` **et** `formula_version` est la version courante : une liste calculée à partir d'un état postérieur à cette demande existe déjà. Terminer le job sans rien faire. (Voir section 6 pour la justification.)
+Dans une requête SQL sur la base de `ms-ranking` (jamais en JavaScript, qui tronque à la milliseconde) : `SELECT started_at >= $requestedAt::timestamptz AND formula_version = $courante FROM ranking_run WHERE user_id = $1 AND list_kind = $2`. Si vrai, une liste calculée à partir d'un état postérieur à cette demande existe déjà : terminer le job sans rien faire (voir section 6).
 
-**Étape 1 : mesure.** `startedAt = now()`.
+**Étape 1 : mesure.** `startedAt = SELECT clock_timestamp()` exécuté sur la base de `ms-ranking`, hors de la transaction d'écriture, jamais `Date.now()` ; conservé comme texte jusqu'à l'étape 8 (même horloge que `requested_at`).
 
 **Étape 2 : jeton interne.** `jwtService.signInternal({ id: 'worker-ranking', role: UserRoles.ADMIN })`, avec cache applicatif de 4 minutes (patron de `social-interaction.client.ts:77-82`).
 
@@ -129,7 +132,7 @@ Le signal « amis » est donc **booléen** (touché ou non par un ami), pas un c
 
 **Étape 7 : score sémantique.** Une requête Jev. Toute erreur Jev tolérable donne le repli structurel (section 8).
 
-**Étape 8 : écriture** : transaction courte avec verrou consultatif, anti-écrasement et suppression de `ranking_request` ([03](03-modele-de-donnees.md) section 3).
+**Étape 8 : écriture** : transaction courte avec verrou consultatif, anti-écrasement, suppression de `ranking_request` si `requested_at <= started_at`, **et, si la ligne survit, écriture d'un job de suite** (`scheduled_at = now + 30 s`, `job_enqueued_at` rafraîchi) dans la même transaction ([03](03-modele-de-donnees.md) section 2).
 
 **Étape 9 :** retourner `{ originalPayload }`.
 
@@ -139,7 +142,7 @@ Un anti-rebond fondé sur le temps (« sauter si le calcul date de moins de 30 s
 
 > Un job de calcul est sauté **si et seulement si** un calcul commencé **après** sa demande a déjà écrit une liste (`ranking_run.started_at >= job.requestedAt`).
 
-Rafale de trois souhaits à `t0`, `t0+5`, `t0+9` : trois jobs planifiés à `t0+30`, `t0+35`, `t0+39`. Le premier démarre à `t0+30` (`started_at` postérieur aux trois `requestedAt`), écrit la liste ; les deux autres voient `started_at >= requestedAt` et sautent. Un souhait à `t0+31`, arrivé **après** le début du calcul, a `requestedAt > started_at` : son job calcule à nouveau. Aucune demande n'est perdue, et aucun calcul n'est répété sans nécessité.
+Rafale de trois souhaits à `t0`, `t0+5`, `t0+9` : **seul le premier écrit un job** (planifié à `t0+30`) ; les deux suivants avancent `requested_at` dans `ranking_request` (job encore frais, `needs_job = false`). Le job démarre à `t0+30` : `started_at` est postérieur aux trois demandes, la liste est écrite et la ligne supprimée. Un souhait à `t0+31`, arrivé après `started_at` mais avant la fin du calcul, avance `requested_at` à `t0+31` : la ligne **survit** à la suppression de fin de calcul et le worker écrit alors un job de suite dans la même transaction. Un souhait arrivé après la fin du calcul trouve la ligne supprimée et écrit un nouveau job. Aucune demande n'est perdue et aucun calcul n'est répété inutilement. `ON_DEMAND` et `MANUAL` forcent un job immédiat (`scheduled_at = now`) ; le job de fond déjà planifié sera sauté par l'étape 0.
 
 `MANUAL` et `ON_DEMAND` suivent la même règle : leur `requestedAt` est la date de la demande, donc ils ne sautent que si une liste plus récente existe déjà.
 
@@ -214,7 +217,7 @@ Conséquence pour nous : aucune notification d'échec n'atteindra le client, d'o
 | `RANKING_FEED_LIKES_LIMIT` / `_LOG_RETENTION_DAYS` | 200 / 90 | likes réconciliés par calcul, rétention du journal |
 | `RANKING_FEED_RECOMPUTE_ON_SIGNAL` | `false` | recalcul sur like ou commentaire (délai de 5 min si activé) |
 | `RANKING_FEED_JEV_ENABLED` | `false` | composante sémantique du feed |
-| `RANKING_REFRESH_BUCKET_CAPACITY` / `RANKING_REFRESH_WINDOW_SECONDS` | 5 / 60 | seau à jetons des rafraîchissements ([13](13-decisions-v1.md) section 3 bis) |
+| `RANKING_REFRESH_BUCKET_CAPACITY` / `RANKING_REFRESH_WINDOW_SECONDS` / `RANKING_LOCATION_BUCKET_CAPACITY` / `RANKING_FEEDBACK_MAX_BATCH` | 5 / 60 / 1 / 50 | seaux à jetons et plafond d'un lot de `PASS` ([13](13-decisions-v1.md) section 3 bis) |
 | `RANKING_LOCATION_KEY` | aucun | clé de 32 octets aléatoires pour chiffrer la position (secret scellé) |
 | `TYPESAFE_API_KEY` | aucun | clé API Jev (SealedSecret) |
 | `JEV_TIMEOUT_MS` | 10000 | délai d'une requête Jev (à valider par la mesure) |

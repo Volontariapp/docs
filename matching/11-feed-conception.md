@@ -34,7 +34,7 @@ Les signaux sur **ses propres posts** sont ignorés.
 
 ### Le journal de likes n'est pas un verdict dérivé
 
-Le principe posé pour les événements est que `ms-ranking` ne stocke que des verdicts recalculables. Le journal de likes est une **donnée comportementale primaire** (date d'un like), non entièrement recalculable (la date d'un like passé est perdue). C'est un écart assumé aux principes du README et de l'ADR-2, qui sont amendés. Conséquences traitées : suppression avec le compte (non couverte en V1, [03](03-modele-de-donnees.md) section 5), purge de rétention, chiffrement au repos à confirmer ([12](12-feed-plan-et-risques.md)).
+Le principe posé pour les événements est que `ms-ranking` ne stocke que des verdicts recalculables. Le journal de likes est une **donnée comportementale primaire** (date d'un like), non entièrement recalculable (la date d'un like passé est perdue). C'est un écart assumé aux principes du README et de l'ADR-2, qui sont amendés. Conséquences traitées : purge à la suppression du compte ([13](13-decisions-v1.md) section 7), purge de rétention, et **absence de chiffrement** (exception documentée, [13](13-decisions-v1.md) décision 30 et section 3 bis).
 
 ## 3. Modèle de données (créé d'emblée avec la dimension `list_kind`)
 
@@ -45,19 +45,19 @@ Correction : au lieu d'une migration qui modifie la clé primaire, **`list_kind`
 | Colonne | Type | Rôle |
 | :--- | :--- | :--- |
 | `user_id` | `uuid` | celui qui like (lu dans `payload.authorId` ou `event.emitterId`) |
-| `post_id_enc` | `text` | identifiant du post liké, **chiffré de façon déterministe** (`encryptDeterministic` de `@volontariapp/crypto`, clé `RANKING_LIKE_KEY`) ; pas de clé étrangère |
+| `post_id` | `uuid` | post liké (pas de clé étrangère) |
 | `occurred_at` | `timestamptz` | `event.createdAt` de l'enveloppe |
 | `deleted_at` | `timestamptz` NULL | pierre tombale posée par un unlike |
 | `origin` | `varchar(10)` | `STREAM` ou `BACKFILL` |
 
-PK `(user_id, post_id_enc)` ; index `(user_id, occurred_at DESC)`. `author_id` n'est **pas stocké** : le payload ne le contient pas ([10](10-feed-etat-des-lieux.md) section 4) ; l'auteur du post est résolu au calcul par `ListPostsByIds`.
+PK `(user_id, post_id)` ; index `(user_id, occurred_at DESC)`. `author_id` n'est **pas stocké** : le payload ne le contient pas ([10](10-feed-etat-des-lieux.md) section 4) ; l'auteur du post est résolu au calcul par `ListPostsByIds`.
 
-**Chiffrement (décision du 2026-10-18).** Le lien utilisateur -> post est une donnée comportementale : l'identifiant du post est chiffré avec le paquet déjà utilisé pour les e-mails (`domain-user`). Le mode **déterministe** est volontaire : la clé primaire et les comparaisons d'égalité restent possibles, et le même post donne le même chiffré (compromis assumé : on peut voir que deux lignes visent le même post, pas lequel). `user_id` reste en clair (c'est l'identifiant de partition) ; `occurred_at` aussi. Les identifiants lus dans le graphe ou dans les flux sont chiffrés **en mémoire** avant écriture ou comparaison ; aucun identifiant de post en clair n'est écrit dans cette table. Clé distincte de celle de la position ([13](13-decisions-v1.md) section 3 bis).
+Journal non chiffré (exception documentée à `AGENTS.md` section 6, [13](13-decisions-v1.md) décision 30 et section 3 bis) : rétention de 90 jours, purge à la suppression du compte.
 
 Règles d'écriture, qui rendent l'**ordre des événements indifférent** (flux séparés pour like et unlike) :
 
-- `POST_LIKED` : `INSERT ... ON CONFLICT (user_id, post_id_enc) DO UPDATE SET occurred_at = EXCLUDED.occurred_at, deleted_at = NULL WHERE ranking_like_log.deleted_at IS NULL OR ranking_like_log.deleted_at < EXCLUDED.occurred_at`.
-- `POST_UNLIKED` : `INSERT ... (deleted_at = event.createdAt) ON CONFLICT (user_id, post_id_enc) DO UPDATE SET deleted_at = EXCLUDED.deleted_at WHERE ranking_like_log.occurred_at < EXCLUDED.deleted_at`.
+- `POST_LIKED` : `INSERT ... ON CONFLICT (user_id, post_id) DO UPDATE SET occurred_at = EXCLUDED.occurred_at, deleted_at = NULL WHERE ranking_like_log.deleted_at IS NULL OR ranking_like_log.deleted_at < EXCLUDED.occurred_at`.
+- `POST_UNLIKED` : `INSERT ... (deleted_at = event.createdAt) ON CONFLICT (user_id, post_id) DO UPDATE SET deleted_at = EXCLUDED.deleted_at WHERE ranking_like_log.occurred_at < EXCLUDED.deleted_at`.
 - Un unlike arrivé avant son like crée une ligne avec pierre tombale ; le like plus ancien qui arrive ensuite ne la réactive pas (sa date est antérieure).
 
 **Réconciliation avec le graphe, à chaque calcul** : `AdminGetUserLikes` (plafonné à `RANKING_FEED_LIKES_LIMIT` = 200, paginé par 50). Un like du journal absent du graphe reçoit une pierre tombale ; un like du graphe absent du journal est ajouté avec `origin = BACKFILL`. Cela corrige les événements perdus (unlike ou like non publié) et fait du **graphe la vérité pour l'existence** d'un like, le journal n'apportant que la **date**.
@@ -123,7 +123,7 @@ Contraintes d'implémentation (`ms-post`) :
 
 ### Démarrage à froid et complément
 
-Corrections : `ListPosts` n'a pas de tri et ne convient pas. Le complément utilise `ListRecentPostsByAuthors(all_authors = true)` trié par date.
+Corrections : `ListPosts` trie par `createdAt DESC` mais ne filtre pas plusieurs auteurs, n'a pas d'index et pas de plafond par auteur ([10](10-feed-etat-des-lieux.md) section 3) : il ne convient pas au complément. Le complément utilise `ListRecentPostsByAuthors(all_authors = true)` trié par date.
 
 - Si le nombre de candidats après filtres est inférieur à `RANKING_FEED_MIN_ITEMS` (20), compléter avec les posts récents de la plateforme, marqués `origin = GLOBAL`, **placés après** les posts d'origine personnelle.
 - Si aucun candidat personnel n'existe, la liste est marquée `source = COLD_START`.
@@ -133,21 +133,19 @@ Corrections : `ListPosts` n'a pas de tri et ne convient pas. Le complément util
 
 ### Composantes (0 à 1)
 
+Poids décidés le 2026-10-18 ([13](13-decisions-v1.md) décision 34 et section 2). Somme : 1,00.
+
 | Composante | Définition | Poids |
 | :--- | :--- | :--- |
-| `authorAffinity` | `min(1, base + bonus)` où `base = min(1, Σ poidsSignal × décroissance(âge) / K)` avec `K = 6`, et `bonus = 0,25` si l'auteur est suivi, `+0,15` si ami | 0,35 |
-| `eventTie` | 1 si le post est lié à un événement que l'utilisateur participe, souhaite ou a créé | 0,15 |
+| `eventTie` | 1 si le post est lié à un événement **futur** que l'utilisateur souhaite ou auquel il participe ; 0,5 si l'événement est passé et que l'utilisateur y a participé ; 0 sinon | 0,35 |
+| `authorAffinity` | `min(1, base + bonus)` où `base = min(1, Σ poidsSignal × décroissance(âge) / K)` avec `K = 6`, et `bonus = 0,25` si l'auteur est suivi, `+0,15` si ami | 0,30 |
 | `recency` | `exp(-âgeEnHeures / 48)` (demi-vie d'environ 33 h) | 0,35 |
-| `popularity` | non calculée en V1 (aucun compteur de likes ; `GetPostLikers` serait N appels) | 0,00 |
-| `semantic` (Jev) | probabilité renvoyée, **désactivée par défaut** | 0,15 |
 
-`décroissance(âge) = 0,5 ^ (âge en jours / 14)`. Correction : `K = 6` (et non 3) pour ne pas saturer dès un commentaire et un like récents ; sinon plus aucune discrimination entre auteurs.
+`décroissance(âge) = 0,5 ^ (âge en jours / 14)`. `K = 6` (et non 3) évite de saturer dès un commentaire et un like récents. Pas de composante de popularité des posts en V1 (aucun compteur de likes ; `GetPostLikers` serait N appels) ni de proximité (un post n'est pas géolocalisé).
 
-### Normalisation
+### Normalisation et Jev
 
-`structural_score = Σ(poids actifs × composante) / Σ(poids actifs)`, **toujours borné à [0, 1]**. Sans Jev, les poids actifs sont `0,35 + 0,15 + 0,35` (somme 0,85) ; avec la popularité activée un jour, la somme change. Le code normalise donc par la somme des poids actifs et applique un `clamp`, sinon la contrainte `CHECK (score BETWEEN 0 AND 1)` ([03](03-modele-de-donnees.md)) ferait échouer toute la transaction.
-
-Score final : `0,85 × structurel_normalisé + 0,15 × sémantique` si Jev est actif pour le candidat, sinon `structurel_normalisé`. Les candidats non évalués par Jev sont plafonnés sous le minimum des évalués (règle de [05](05-scoring-et-jev.md) section 5).
+Sans Jev, `score = structurel`. Jev est **désactivé par défaut** pour le feed (voir plus bas) ; s'il est actif pour un candidat : `score = 0,85 × structurel + 0,15 × sémantique`. Les candidats non évalués par Jev sont plafonnés sous le minimum des évalués (règle de [05](05-scoring-et-jev.md) section 5). Toujours borner dans [0, 1] (`clamp`), sinon la contrainte `CHECK (score BETWEEN 0 AND 1)` ([03](03-modele-de-donnees.md)) ferait échouer toute la transaction.
 
 ### Posts déjà likés ou commentés
 
@@ -171,8 +169,8 @@ Décision issue de la revue (stabilité du feed) : **un like ou un commentaire n
 | Like / unlike | `POST_LIKED`, `POST_UNLIKED` | écriture du journal seulement | n/a | n/a |
 | Commentaire | `COMMENT_CREATED/DELETED` | **aucun consommateur** (commentaires lus dans `ms-post`) | n/a | n/a |
 | Nouveau compte | `social:user` (type `user.created`) | demandes `EVENT` **et** `POST`, écrites dans la même transaction | feed / fond | `USER_CREATED` |
-| Lecture sans liste | `GetRankingPosts` | demande `ON_DEMAND` | fallback | `ON_DEMAND` |
-| Liste périmée (> `RANKING_FEED_STALE_AFTER_HOURS`, 2 h) | `GetRankingPosts` | demande `STALE_REFRESH` | feed | `STALE_REFRESH` |
+| Lecture sans liste | `GetRankingFeed` | demande `ON_DEMAND` | fallback | `ON_DEMAND` |
+| Liste périmée (> `RANKING_FEED_STALE_AFTER_HOURS`, 2 h) | `GetRankingFeed` | demande `STALE_REFRESH` | feed | `STALE_REFRESH` |
 | Demande manuelle | `RequestRankingRefresh(list_kind)` | demande | fallback | `MANUAL` |
 | Follow, unfollow, block | aucun flux (V2) | rafraîchissement périodique | n/a | n/a |
 | Suppression d'un post | `POST_DELETED` | aucune : l'identifiant disparaît à la lecture | n/a | n/a |
@@ -181,27 +179,7 @@ Corrections de cohérence : `RANKING_STALE_AFTER_HOURS` (24, événements) et `R
 
 ## 7. Jobs, files, fan-out
 
-```typescript
-export enum RankingJobType {
-  COMPUTE_USER_RANKING = 'ranking.compute_user_ranking',   // evenements
-  COMPUTE_USER_FEED     = 'ranking.compute_user_feed',       // posts
-  FANOUT_RANKING       = 'ranking.fanout',
-}
-
-export interface IComputeUserFeedPayload {
-  userId: string;
-  reason: 'USER_CREATED' | 'POST_PUBLISHED' | 'ON_DEMAND' | 'STALE_REFRESH' | 'MANUAL';
-  requestedAt: string; // horloge de la base ms-ranking (voir 04, section 6)
-}
-
-export interface IFanoutRankingPayload {
-  trigger: 'EVENT_CREATED' | 'EVENT_FINISHED' | 'POST_CREATED';
-  eventId?: string;   // pour les declencheurs d'evenement
-  postId?: string;    // pour POST_CREATED
-  authorId?: string;  // pour POST_CREATED
-  requestedAt: string;
-}
-```
+Les types de job, payloads et files des deux listes (`RankingJobType`, `IComputeUserFeedPayload`, `IFanoutRankingPayload`, `RankingQueue`) sont définis **une seule fois** dans [04](04-flux-asynchrone.md) section 3.
 
 Files : `ranking-feed-queue` (nouvelle, `RankingQueue.FEED`) pour les recalculs de posts, afin qu'un afflux de publications ne retarde pas les calculs d'événements ; `fallback-ranking-queue` pour `ON_DEMAND` et `MANUAL` des deux types. Le second type de job nécessite un **second mapping de notification WebSocket** ([04](04-flux-asynchrone.md) section 9), idéalement dans un enum dédié `ranking` plutôt que dans `EventEventMessagingType` (nom trompeur pour un feed de posts, à confirmer selon ce que `JOB_TO_EVENT_MAPPING` accepte).
 
@@ -220,7 +198,7 @@ Files : `ranking-feed-queue` (nouvelle, `RankingQueue.FEED`) pour les recalculs 
 GET /ranking/feed?page=1&limit=20     200 | 206
 ```
 
-1. `ms-ranking.GetRankingPosts` : lecture indexée de `ranking_post_score` (200) ou demande `ON_DEMAND` + `FALLBACK_ACTIVATED('ranking.compute_user_feed', ...)` (206). Le type de job dans l'erreur dépend de `list_kind` (corrigé : il était écrit en dur pour les événements).
+1. `ms-ranking.GetRankingFeed` : lecture indexée de `ranking_post_score` (200) ou demande `ON_DEMAND` + `FALLBACK_ACTIVATED('ranking.compute_user_feed', ...)` (206). Le type de job dans l'erreur dépend de `list_kind` (corrigé : il était écrit en dur pour les événements).
 2. La gateway charge le contenu via `ms-post.ListPostsByIds` (plafond de 100 identifiants, sans pagination ; la « pagination explicite » héritée des événements est sans objet ici), réordonne selon l'ordre reçu et écarte les posts absents.
 3. **Blocages appliqués à la lecture** : la gateway obtient les deux ensembles de blocage de l'utilisateur (`GetMyBlocks`, `GetWhoBlockedMe`, RPC utilisateur existantes) et retire les posts des auteurs concernés. Sans cela, un harceleur bloqué reste visible jusqu'au prochain recalcul (jusqu'à environ 2 h). Si cette étape est jugée trop coûteuse, le risque est à déclarer Haute.
 4. Pas d'enrichissement existant à reproduire : le DTO de liste de posts n'en a aucun ([10](10-feed-etat-des-lieux.md) section 3). Les médias ne sont pas transportés non plus par ce DTO.
@@ -229,7 +207,7 @@ GET /ranking/feed?page=1&limit=20     200 | 206
 
 ### Stabilité de la liste pendant la lecture
 
-La liste est **remplacée en bloc** à chaque calcul. Une pagination par `rank` sur une liste qui change entre deux pages peut dupliquer ou sauter des éléments. Mesures : la réponse porte `listVersion` (= `computedAt`) ; le client le renvoie en demandant la page suivante ; si la version a changé, le serveur renvoie `versionChanged = true` et le client recharge depuis la page 1 (ou affiche un bandeau « nouveaux posts »). **Le client ne rafraîchit pas automatiquement** une liste en cours de lecture à réception de la notification : il affiche un bandeau et recharge à la demande ou au retour sur l'écran.
+La liste est **remplacée en bloc** à chaque calcul. Une pagination par `rank` sur une liste qui change entre deux pages peut dupliquer ou sauter des éléments. Mesures : la réponse porte `listVersion` (= `computedAt`) et un curseur opaque `(listVersion, lastRank)` ([13](13-decisions-v1.md) décision 35) ; le client le renvoie en demandant la page suivante ; si la version a changé, le serveur renvoie `versionChanged = true` et le client recharge depuis la page 1 (ou affiche un bandeau « nouveaux posts »). **Le client ne rafraîchit pas automatiquement** une liste en cours de lecture à réception de la notification : il affiche un bandeau et recharge à la demande ou au retour sur l'écran.
 
 ## 9. Fraîcheur et évolution
 

@@ -45,9 +45,9 @@ Vérifié avec `analyze_impact` :
 | :--- | :--- | :--- | :--- |
 | `Streams.SOCIAL_USER` (`social:user`) | trigger SQL de `domain-user` : `target_services = ARRAY['social:user']` (`database/triggers/users.trigger.sql:27`) | `post-processor-social` (`users/options/user-created.options.ts:10`) | **Oui, c'est le flux à consommer pour l'inscription** |
 | `Streams.USER_CREATED` (`user:created`) | aucun producteur applicatif trouvé (le mesh mélange les deux noms, non confirmé à 100 %) | `ws-service`, `nativapp` | Non, à ne pas utiliser |
-| `Streams.EVENT_CREATED` | `domain-event/.../postgres-event.repository.ts:71` | `post-processor-event`, `post-processor-social`, `ws-service` | Oui |
+| `Streams.EVENT_CREATED` | `domain-event/.../postgres-event.repository.ts:118` | `post-processor-event`, `post-processor-social`, `ws-service` | Oui |
 | `Streams.EVENT_SOCIAL_WISHED` / `UNWISHED` | `domain-social/.../participation.service.ts:246` et `:295` | `post-processor-user` (badges) | Oui |
-| `Streams.EVENT_FINISHED` | `postgres-event.repository.ts:139` | `post-processor-user` (badges) | Oui |
+| `Streams.EVENT_FINISHED` | `postgres-event.repository.ts:314` | `post-processor-user` (badges) | Oui |
 | `Streams.SOCIAL_PARTICIPATIONS` | **aucun** | aucun | Non |
 | `Streams.SOCIAL_RELATIONS` | **aucun** | aucun | Non |
 | `Streams.EVENT_SUCCESSFULLY_CREATED` | **aucun** | `post-processor-event`, `post-processor-user` | Non |

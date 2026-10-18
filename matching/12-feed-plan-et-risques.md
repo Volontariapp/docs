@@ -6,12 +6,12 @@ Complète [09](09-plan-de-livraison.md). Le feed s'appuie sur la même fondation
 
 | Dépôt | Changement |
 | :--- | :--- |
-| `proto-registry` | `post.services.proto` / `post.query.proto` : RPC `ListRecentPostsByAuthors`, `ListPostsByIds`, `ListCommentsByAuthor` (additifs) ; `ranking.*.proto` : `GetRankingPosts`, `list_kind` dans `RequestRankingRefresh`, `RANKING_SOURCE_COLD_START`, `list_version`/`version_changed` |
+| `proto-registry` | `post.services.proto` / `post.query.proto` : RPC `ListRecentPostsByAuthors`, `ListPostsByIds`, `ListCommentsByAuthor` (additifs) ; `ranking.*.proto` : `GetRankingFeed`, `list_kind` dans `RequestRankingRefresh`, `RANKING_SOURCE_COLD_START`, `list_version`/`version_changed` |
 | `npm-packages/messaging` | `RankingJobType.COMPUTE_USER_FEED`, `IComputeUserFeedPayload`, `IFanoutRankingPayload` généralisé (`trigger`), `RankingQueue.FEED` ; **second mapping WebSocket** |
 | `npm-packages/domain-ranking` | entités `RankingLikeLog`, `RankingPostScore` ; migration avec `list_kind` dès l'origine ; service de score du feed ; réconciliation des likes |
 | `npm-packages/domain-post` | implémentation des trois lectures ; filtre sur `mediaStatus` |
 | `ms-post` | handlers des trois RPC ; **migration d'index** `CREATE INDEX ... ON posts ("authorId", "createdAt" DESC)` (`src/migrations/domain/`, resynchronisée par `sync-migrations.sh`) et tests de migration ; résolution de `eventId` via `ms-social` quand un jeton est transmis |
-| `ms-ranking` | `GetRankingPosts`, demande `ON_DEMAND` pour `list_kind = POST`, nettoyage de rétention dans la transaction d'écriture |
+| `ms-ranking` | `GetRankingFeed`, demande `ON_DEMAND` pour `list_kind = POST`, nettoyage de rétention dans la transaction d'écriture |
 | `post-processor-ranking` | deux post-processors de plus (**`POST_CREATED`**, **`POST_LIKED`/`POST_UNLIKED`** qui écrivent le journal) ; `UserCreated` écrit désormais **deux** demandes (EVENT et POST) dans une seule transaction ; options de flux et groupes de consommateurs |
 | `worker-ranking` | `ComputeUserFeedHandler`, client gRPC `ms-post`, extension du fan-out (`trigger = POST_CREATED`), file `ranking-feed-queue` |
 | `api-gateway` | `GET /ranking/feed`, client `ms-post` (`BasePostGrpcController`, `POST_PACKAGE` existent), filtre de blocage à la lecture, plafond de `limit` |
@@ -32,7 +32,7 @@ Les trois RPC `ms-post` et les messages `ranking` se regroupent **dans la même 
 | F2 | Complément `GLOBAL` + démarrage à froid, diversité, lien événement, blocage à la lecture | un compte neuf voit des posts ; un auteur bloqué disparaît immédiatement |
 | F3 | Fan-out sur nouveau post, coalescence, rafraîchissement périodique, bandeau côté client | le feed bouge quand quelqu'un publie, sans se reclasser en lecture |
 | F4 (optionnelle) | Composante Jev derrière `RANKING_FEED_JEV_ENABLED` | classement sémantique, après décision |
-| F5 (V2) | Événements de follow/unfollow/block dans `domain-social` ; câblage des médias dans `ms-post` | réactivité complète, filtre média strict |
+| F5 (V2) | Événements de follow/unfollow/block dans `domain-social` | réactivité complète (le câblage des médias est fait depuis le 2026-10-18) |
 
 F1 est livrable sans Jev.
 
@@ -57,12 +57,12 @@ F1 est livrable sans Jev.
 | Risque | Gravité | Atténuation |
 | :--- | :--- | :--- |
 | Blocage non appliqué à la lecture : un auteur bloqué reste visible jusqu'au prochain recalcul | **Haute** (sécurité de l'utilisateur) | filtre de blocage dans la gateway à chaque lecture (F2) |
-| Contenu non modéré montré à un compte neuf (aucune modération ni signalement dans `ms-post`) | **Haute** | complément `GLOBAL` désactivable tant qu'un signalement n'existe pas ; à signaler |
+| Contenu non modéré montré à un compte neuf (aucune modération ni signalement dans `ms-post`) | **Haute** | complément `GLOBAL` conservé comme repli après les posts personnels (décision du 2026-10-18), risque jugé faible (utilisateurs fictifs) ; à réexaminer avant tout lancement public |
 | Profil de goûts envoyé à un tiers (si Jev activé) | Haute | Jev désactivé par défaut |
-| Journal de likes : donnée comportementale primaire, non recalculable, sans effacement de compte | Haute (conformité) | rétention, suppression avec le compte (T5 des événements), question de chiffrement au repos |
+| Journal de likes : donnée comportementale primaire, non recalculable | Moyenne (conformité) | rétention de 90 jours, purge à la suppression du compte ([13](13-decisions-v1.md) section 7) ; **non chiffré**, exception documentée ([13](13-decisions-v1.md) décision 30) |
 | Fan-out amplifié et abonnés tronqués | Moyenne | pagination, intersection avec les actifs, coalescence, file dédiée |
 | Médias non implémentés dans `ms-post` | Moyenne | filtre en exclusion (`PENDING`/`REJECTED`) |
-| Rafale d'`ON_DEMAND` au déploiement (aucun utilisateur n'a de liste) | Moyenne | `RANKING_FEED_ENABLED`, concurrence bornée, file fallback |
+| Rafale d'`ON_DEMAND` au déploiement (aucun utilisateur n'a de liste) | Moyenne | concurrence bornée, file de repli dédiée (l'indicateur de déploiement progressif est supprimé : [13](13-decisions-v1.md) décision 17) |
 | Feed qui se reclasse pendant la lecture | Moyenne | pas de recalcul sur signal, `listVersion`, bandeau côté client |
 | Index absent sur `posts` : lectures coûteuses | Moyenne | migration d'index avec les RPC |
 | Pas de découverte : le feed ne remonte aucun auteur inconnu | Faible à Moyenne (produit) | nommer honnêtement ; part d'exploration en question ouverte |

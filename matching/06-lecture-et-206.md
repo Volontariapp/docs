@@ -19,41 +19,79 @@ Nouveau paquet sur le modèle de `social/` (`ranking.proto`, `.query`, `.command
 syntax = "proto3";
 package volontariapp.ranking;
 
-message GetRankingEventsQuery {
-  volontariapp.common.PaginationRequest pagination = 1;
-}
-
-message RankingEvent {
-  string event_id = 1;
-  double score = 2;
-  double structural_score = 3;
-  optional double semantic_score = 4;
+enum RankingListKind {
+  RANKING_LIST_KIND_UNSPECIFIED = 0;
+  RANKING_LIST_KIND_EVENT = 1;
+  RANKING_LIST_KIND_POST = 2;
 }
 
 enum RankingSource {
   RANKING_SOURCE_UNSPECIFIED = 0;
   RANKING_SOURCE_FULL = 1;
   RANKING_SOURCE_STRUCTURAL_ONLY = 2;
-  RANKING_SOURCE_COLD_START = 3;   // feed de posts sans candidat personnel
+  RANKING_SOURCE_COLD_START = 3;      // feed de posts sans candidat personnel
 }
 
-message GetRankingEventsResponse {
-  repeated RankingEvent events = 1;
+enum RankingReason {                  // codes d'explication, voir 13 section 6
+  RANKING_REASON_UNSPECIFIED = 0;
+  RANKING_REASON_FRIEND_INVOLVED = 1;
+  RANKING_REASON_NEAR_YOU = 2;
+  RANKING_REASON_MATCHES_INTERESTS = 3;
+  RANKING_REASON_STARTING_SOON = 4;
+  RANKING_REASON_TRENDING = 5;
+  RANKING_REASON_FOLLOWED_AUTHOR = 6;
+  RANKING_REASON_FRIEND_AUTHOR = 7;
+  RANKING_REASON_ENGAGED_AUTHOR = 8;
+  RANKING_REASON_LINKED_EVENT_WISHED = 9;
+  RANKING_REASON_LINKED_EVENT_JOINED = 10;
+  RANKING_REASON_RECENT = 11;
+}
+
+enum FeedbackAction {
+  FEEDBACK_ACTION_UNSPECIFIED = 0;
+  FEEDBACK_ACTION_PASS = 1;
+}
+
+message RankingItem {
+  string id = 1;                      // eventId ou postId selon la liste
+  double score = 2;
+  int32 rank = 3;
+  repeated RankingReason reasons = 4; // 2 au plus
+  double structural_score = 5;
+  optional double semantic_score = 6;
+}
+
+message GetRankingEventsQuery { string cursor = 1; int32 limit = 2; }   // curseur opaque (listVersion, lastRank)
+message GetRankingFeedQuery { string cursor = 1; int32 limit = 2; }
+
+message GetRankingResponse {
+  repeated RankingItem items = 1;
   RankingSource source = 2;
-  string computed_at = 3;   // ISO 8601
-  int32 total_count = 4;    // lignes de la liste, independant de la page
-  bool has_more = 5;        // base sur le rang dans la liste, pas sur la longueur de la page
-  bool stale = 6;           // un recalcul a ete demande
+  string computed_at = 3;             // ISO 8601
+  string list_version = 4;
+  string next_cursor = 5;
+  bool has_more = 6;                  // base sur le rang dans la liste, pas sur la longueur de la page
+  bool stale = 7;                     // un recalcul a ete demande
+  bool version_changed = 8;           // la liste a ete recalculee depuis le curseur
+  int32 total_count = 9;
 }
 
-message RequestRankingRefreshCommand {}
-message RequestRankingRefreshResponse { bool accepted = 1; }
+message RequestRankingRefreshCommand { RankingListKind list_kind = 1; }
+message RequestRankingRefreshResponse { bool accepted = 1; bool refresh_throttled = 2; }
+message UpdateUserLocationCommand { double lat = 1; double lng = 2; }
+message UpdateUserLocationResponse { bool accepted = 1; }
+message EventFeedbackItem { string event_id = 1; FeedbackAction action = 2; }
+message RecordEventFeedbackCommand { repeated EventFeedbackItem items = 1; }   // 50 au plus
+message RecordEventFeedbackResponse { int32 recorded = 1; }
 
 service RankingQueryService {
-  rpc GetRankingEvents(GetRankingEventsQuery) returns (GetRankingEventsResponse);
+  rpc GetRankingEvents(GetRankingEventsQuery) returns (GetRankingResponse);
+  rpc GetRankingFeed(GetRankingFeedQuery) returns (GetRankingResponse);
 }
 service RankingCommandService {
   rpc RequestRankingRefresh(RequestRankingRefreshCommand) returns (RequestRankingRefreshResponse);
+  rpc UpdateUserLocation(UpdateUserLocationCommand) returns (UpdateUserLocationResponse);
+  rpc RecordEventFeedback(RecordEventFeedbackCommand) returns (RecordEventFeedbackResponse);
 }
 ```
 
@@ -62,23 +100,27 @@ L'identité vient du token interne (`@CurrentUser()`), **jamais du corps de la r
 ## 3. Handler de lecture (`ms-ranking`)
 
 ```text
-1. userId := identité du token interne
-2. run := SELECT ... FROM ranking_run WHERE user_id = userId
+1. userId := identité du token interne ; listKind := EVENT (GetRankingEvents) ou POST (GetRankingFeed)
+2. run := SELECT ... FROM ranking_run WHERE user_id = userId AND list_kind = listKind
 3. si run absent :
-       demander un calcul ON_DEMAND (ranking_request + jobs_outbox, file FALLBACK_RANKING),
+       demander un calcul ON_DEMAND forcé (ranking_request + jobs_outbox, file FALLBACK_RANKING),
          DANS SA PROPRE TRANSACTION, VALIDEE AVANT l'étape suivante
-       lancer FALLBACK_ACTIVATED(jobType(list_kind), 'RANKING_NOT_READY')
+       lancer FALLBACK_ACTIVATED(jobType(listKind), 'RANKING_NOT_READY')
          ou jobType('EVENT') = 'ranking.compute_user_ranking' et jobType('POST') = 'ranking.compute_user_feed'
-4. lignes := SELECT ... FROM ranking_score WHERE user_id = userId ORDER BY rank LIMIT .. OFFSET ..
-5. si run est périmé (âge > RANKING_STALE_AFTER_HOURS ou formula_version différente) :
-       demander un calcul STALE_REFRESH (file RANKING, scheduled_at = now + 30 s)
-6. renvoyer { lignes, source, computedAt, totalCount, hasMore, stale }
+4. curseur := décoder (listVersion, lastRank) ; si listVersion != version courante de la liste :
+       versionChanged = true et repartir du rang 1
+5. lignes := SELECT ... FROM ranking_score (ou ranking_post_score) WHERE user_id = userId AND rank > lastRank
+       ORDER BY rank LIMIT limite + 1
+       (listKind = EVENT : pénalités liées aux PASS appliquées aux seuls rangs non servis)
+6. si run est périmé (âge > RANKING_STALE_AFTER_HOURS ou RANKING_FEED_STALE_AFTER_HOURS, ou formula_version différente) :
+       demander un calcul STALE_REFRESH (file RANKING ou FEED, scheduled_at = now + 30 s)
+7. renvoyer { items, source, computedAt, listVersion, nextCursor, hasMore, stale, versionChanged, totalCount }
 ```
 
 Points de rigueur (vérifiés par la revue) :
 
-- **Le job doit être écrit hors de toute transaction qui serait annulée par la levée de l'exception.** `withFallback` (`ms-event/.../base.command.controller.ts:15-58`) écrit le job avec `repo.create` puis lève l'erreur ; si l'implémentation d'affinité enveloppe la lecture dans une transaction, l'exception annule l'insertion. On ne réutilise pas `withFallback` tel quel : l'absence de liste n'est pas une exception mais un état. On utilise la fabrique `FALLBACK_ACTIVATED` de `@volontariapp/errors-nest`.
-- **Déduplication.** Un client qui réessaie en boucle ne doit pas multiplier les jobs. La table `ranking_request` ([03](03-modele-de-donnees.md) section 2) fait office de verrou de demande : un second appel, tant qu'un job récent existe pour cet utilisateur, met seulement `requested_at` à jour. Les statuts de `jobs_outbox` ne servent pas à dédupliquer, car la ligne est `COMPLETED` dès le push et n'est supprimée que par le post-processor de succès.
+- **Le job doit être écrit hors de toute transaction qui serait annulée par la levée de l'exception.** `withFallback` (`ms-event/.../base.command.controller.ts:15-58`) écrit le job avec `repo.create` puis lève l'erreur ; si l'implémentation de ranking enveloppe la lecture dans une transaction, l'exception annule l'insertion. On ne réutilise pas `withFallback` tel quel : l'absence de liste n'est pas une exception mais un état. On utilise la fabrique `FALLBACK_ACTIVATED` de `@volontariapp/errors-nest`.
+- **Déduplication.** Un client qui réessaie en boucle ne doit pas multiplier les jobs. La table `ranking_request` ([03](03-modele-de-donnees.md) section 2) fait office de verrou de demande : une demande de fond tant qu'un job récent existe avance seulement `requested_at` ; `ON_DEMAND` et `MANUAL` forcent un job immédiat. Les statuts de `jobs_outbox` ne servent pas à dédupliquer, car la ligne est `COMPLETED` dès le push et n'est supprimée que par le post-processor de succès.
 - **Un job peut être perdu** (section 6) ; `RANKING_REQUEST_TTL_SECONDS` permet de le réémettre à la lecture suivante.
 - Un effet de bord dans une lecture est un choix assumé (même logique que `withFallback`).
 
@@ -144,8 +186,8 @@ Routes ajoutées par les décisions de [13](13-decisions-v1.md) :
 
 | Route | Rôle |
 | :--- | :--- |
-| `PUT /ranking/location` | l'application envoie la position à l'ouverture ; arrondie à 1 km, chiffrée, recalcul seulement après un déplacement de plus de 10 km |
-| `POST /ranking/events/feedback` | enregistre en lot les swipes à gauche (`PASS`) |
+| `PUT /ranking/location` | l'application envoie la position à l'ouverture ; arrondie à 1 km, chiffrée ; limité à 1 appel par minute (seau `LOCATION`) ; recalcul seulement après un déplacement de plus de 10 km |
+| `POST /ranking/events/feedback` | enregistre en lot les swipes à gauche (`PASS`), 50 éléments au plus |
 | `GET /ranking/events?cursor=...&limit=20` | lecture par lot de 20 avec curseur et `listVersion` (à la place d'un `OFFSET`) |
-| `GET /ranking/events?refresh=true` | demande un recalcul (`MANUAL`) et sert le pool actuel en attendant la notification ; limité à 5 par minute et par utilisateur (seau à jetons, [13](13-decisions-v1.md) section 3 bis) ; au-delà, `refreshThrottled = true`, HTTP 200, aucun recalcul |
+| `POST /ranking/refresh` | corps `{listKind}` ; demande un recalcul (`MANUAL`, file de repli) ; limité à 5 par minute et par utilisateur, seau `REFRESH` partagé entre événements et posts ([13](13-decisions-v1.md) section 3 bis) ; au-delà, `refreshThrottled = true`, HTTP 200, aucun recalcul |
 | `GET /ranking/feed` | feed de posts, mêmes règles de lecture ([11](11-feed-conception.md) section 8) |
