@@ -1,6 +1,6 @@
 # 01 - État des lieux
 
-Faits vérifiés dans le code le 2026-10-11 (outils mesh-mcp et lecture directe). Chemins relatifs à la racine `meta`. Ce qui n'a **pas** pu être vérifié est dit explicitement.
+Faits vérifiés dans le code le 2026-10-11 (outils mesh-mcp et lecture directe), puis revérifiés en partie le 2026-10-18 : les écarts constatés depuis (suppression de compte, médias de `ms-post`) sont corrigés dans les sections concernées et listés dans [13](13-decisions-v1.md). Chemins relatifs à la racine `meta`. Ce qui n'a **pas** pu être vérifié est dit explicitement.
 
 ## 1. Le graphe social (`ms-social`, Neo4j)
 
@@ -59,12 +59,12 @@ Conséquence : `participateEvent`, `leaveEvent`, `followUser` et `blockUser` de 
 Deux précisions de la revue :
 
 - L'émission des événements de souhait **n'est pas atomique** : `wishEvent` écrit dans Neo4j puis insère dans `event_queue` (deux magasins), et l'échec de l'insertion est avalé par un `logger.warn` (`participation.service.ts:246-265`). Un événement de souhait peut être perdu silencieusement.
-- `user:deleted` n'a **aucun producteur** : `UserService.delete` (`domain-user/src/services/user.service.ts:135-139`) appelle seulement `userRepository.delete`, et le trigger SQL des utilisateurs ne gère que `INSERT`.
+- `user:deleted` a désormais un producteur (corrigé le 2026-10-18) : `PostgresUserRepository.requestDeletionWithUserDeleted` (`domain-user/src/repositories/postgres-user.repository.ts:90-111`) passe l'utilisateur en `PENDING_DELETION` et écrit `user.deleted` dans `event_queue` vers `USER_DELETED`, `SOCIAL_USER`, `USER_DELETED_POST`, `USER_DELETED_EVENT` et `USER_DELETED_STORAGE`. Chaque domaine a son propre stream ; `finalizeDeletion` ne supprime la ligne qu'après le succès du gather côté `ws-service` (skill `volontariapp-user-account-deletion`). `ms-ranking` doit donc avoir son stream `user:deleted:ranking` et figurer dans les `targetServices` (modification de `domain-user`, soumise au STOP).
 
 ## 5. Le circuit de jobs et le 206
 
 - `withFallback` (`ms-event/src/modules/event/controllers/commands/base.command.controller.ts`) : si l'opération échoue sur une erreur autre que 400, 404, 409, il écrit un job de repli dans `jobs_outbox` (queue `FALLBACK_*`), puis lance `FALLBACK_ACTIVATED(jobType, message)` de `@volontariapp/errors-nest`. **Le client reçoit un 206 sans données et attend le résultat par WebSocket** (skill `volontariapp-api-gateway`, ligne 99).
-- Le trigger SQL `notify_job_audit_status_change` déduit le nom du stream du champ `emitter` : `replace(NEW.emitter, 'ms-', '')`. Un émetteur `ms-affinity` produira donc `affinity:job:outbox:success` et `affinity:job:outbox:failure`, **à déclarer dans l'enum `Streams`** (`npm-packages/packages/shared/src/enums/streams.enum.ts`).
+- Le trigger SQL `notify_job_audit_status_change` déduit le nom du stream du champ `emitter` : `replace(NEW.emitter, 'ms-', '')`. Un émetteur `ms-ranking` produira donc `ranking:job:outbox:success` et `ranking:job:outbox:failure`, **à déclarer dans l'enum `Streams`** (`npm-packages/packages/shared/src/enums/streams.enum.ts`).
 - `BaseWorker` saute un job déjà `COMPLETED` : il consulte d'abord une clé Redis `job:completed:<id>` (TTL 24 h) puis `job_audit` (`workers/src/core/base.worker.ts:77-132`), et rejoue un job resté `PROCESSING`. Il écrit `FAILED` dans `job_audit` à **chaque tentative** (`base.worker.ts:211-232`, 3 tentatives par défaut).
 - L'outbox (`database/src/outbox/consumers/outbox.consumer.ts`) fait passer `PENDING` à `PROCESSING` puis à `COMPLETED` après le push BullMQ, ou à `FAILED` si le push échoue. Il ne relit que `PENDING` : **un job `FAILED` n'est jamais repoussé**.
 - `JobsOutboxEntity.createJob` génère un `randomUUID()` sans clé d'idempotence, et le `jobId` BullMQ vaut cet identifiant : aucune déduplication native.
@@ -81,7 +81,7 @@ const token = await this.jwtService.signInternal({ id: 'pp-user', role: UserRole
 // mis en cache 4 minutes, puis posé en métadonnée gRPC INTERNAL_TOKEN_METADATA_KEY
 ```
 
-Et il appelle des RPC `adminGet*` avec un `userId` explicite. **C'est le patron à suivre pour `worker-affinity`.** Contrepartie de sécurité : le service détient un jeton de rôle `ADMIN` (voir [08](08-tests-observabilite-securite.md)).
+Et il appelle des RPC `adminGet*` avec un `userId` explicite. **C'est le patron à suivre pour `worker-ranking`.** Contrepartie de sécurité : le service détient un jeton de rôle `ADMIN` (voir [08](08-tests-observabilite-securite.md)).
 
 `GrpcInternalGuard` (`npm-packages/packages/auth/src/guards/grpc-internal.guard.ts`) lit le jeton dans la métadonnée, le vérifie avec `jwtService.verifyInternal`, et pose `user` dans le contexte.
 
@@ -101,7 +101,7 @@ Chaque domaine est découpé en déployables distincts (`AGENT.md` section 1, r�
 
 ## 8. Ce qui manque pour le projet
 
-1. Tout le domaine `affinity` (ligne 7 ci-dessus : six emplacements à créer).
+1. Tout le domaine `ranking` (ligne 7 ci-dessus : six emplacements à créer).
 2. Les contrats de jobs et l'enum de streams.
 3. La RPC `AdminGetRecommendedEventIds` dans `ms-social`.
 4. Un adaptateur Jev (API documentée, voir [05](05-scoring-et-jev.md)).

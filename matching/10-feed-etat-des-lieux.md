@@ -1,8 +1,8 @@
 # 10 - Feed de posts : état des lieux
 
-Extension de `ms-affinity` : en plus des événements, le service classe **les posts** pour produire un feed fondé sur ce que l'utilisateur aime, commente et suit. Ce document établit ce qui existe ; la conception est en [11](11-feed-conception.md), le plan en [12](12-feed-plan-et-risques.md).
+Extension de `ms-ranking` : en plus des événements, le service classe **les posts** pour produire un feed fondé sur ce que l'utilisateur aime, commente et suit. Ce document établit ce qui existe ; la conception est en [11](11-feed-conception.md), le plan en [12](12-feed-plan-et-risques.md).
 
-Faits vérifiés le 2026-10-11 par lecture directe du code et par une revue indépendante. Chemins relatifs à la racine `meta`. Les corrections issues de la revue sont signalées par « Corrigé ».
+Faits vérifiés le 2026-10-11 par lecture directe du code et par une revue indépendante, puis mis à jour le 2026-10-18 (médias de `ms-post`, usage du feed existant). Chemins relatifs à la racine `meta`. Les corrections issues de la revue sont signalées par « Corrigé ».
 
 ## 1. Le feed qui existe déjà
 
@@ -35,7 +35,7 @@ Limites : **aucune relation n'a d'horodatage** ; **aucune relation de commentair
 | :--- | :--- | :--- |
 | Entité | `PostEntity` : `id`, `authorId`, `title`, `content`, `createdAt`, `updatedAt`, `saga_status` | `npm-packages/packages/domain-post/src/entities/post.entity.ts` |
 | `eventId` | **N'est pas une colonne.** `ms-post` l'obtient de `ms-social` à chaque lecture, seulement si un jeton est transmis | `ms-post/.../post.query.controller.ts:36-41, 60-68` ; `post.model.ts` (pas de colonne) |
-| Médias | L'enum `PostMediaStatus` existe dans le contrat, mais **`toPostDTO` ne renseigne ni `media` ni `mediaStatus`** : le statut vaut toujours `UNSPECIFIED`. Aucune table de médias dans `domain-post`. `fileIds` vaut `[]` en dur à la création | `ms-post/src/modules/post/transformers/post.transformer.ts:34-48` ; `postgres-post.repository.ts:80-85` |
+| Médias | Corrigé le 2026-10-18 : `toPostDTO` renseigne `media` (`fileId`, `position`) et `mediaStatus` (`NONE`, `PENDING`, `READY`, `REJECTED`, repli `NONE`). La création gère `fileIds` et les statuts de scan | `ms-post/src/modules/post/transformers/post.transformer.ts:41-69` ; `npm-packages/packages/domain-post/src/repositories/postgres-post.repository.ts:149-205` |
 | Colonnes SQL | `"authorId"` et `"createdAt"` (camelCase), `TIMESTAMP` sans fuseau. **Aucun index** sur `authorId` ni `createdAt` (seul `saga_status` est indexé) | `ms-post/src/migrations/domain/1776000000000-InitialPostSchema.ts:9` ; `post.model.ts` |
 | RPC de lecture de posts | `GetPost(id)`, `ListPosts(pagination, optional author_id)` | `post.services.proto:14-25` |
 | Tri de `ListPosts` | **Aucun** : `paginate({page, limit}, {where})` sans `order` ; défaut page 1, limit 10, **aucun plafond** | `postgres-post.repository.ts:59-66` ; `database/src/core/base.repository.ts:227-251` ; `ms-post/.../post.query.controller.ts:55-56` |
@@ -45,7 +45,7 @@ Limites : **aucune relation n'a d'horodatage** ; **aucune relation de commentair
 | Absent | recherche par liste d'identifiants, par liste d'auteurs, filtre de date, lecture des commentaires par auteur, modération, signalement | `post.query.proto`, recherche « moderat\|report » : aucun résultat |
 | Enrichissement gateway | **Aucun** : le DTO de liste contient `id`, titre, contenu, `authorId`, dates, événement ; ni profil d'auteur, ni compteurs, ni médias | `api-gateway/src/modules/post/dto/response/list-posts.response.dto.ts:18-31` |
 
-Corrigé : la visibilité des médias (`NONE`/`READY`) est définie « sur le papier » mais **non implémentée** ; un filtre qui n'accepterait que ces valeurs exclurait tous les posts.
+Corrigé le 2026-10-18 : la visibilité des médias est désormais implémentée dans `ms-post`. Un filtre `NONE`/`READY` n'exclut plus tous les posts ; `PENDING` et `REJECTED` restent à exclure.
 
 ## 4. Signaux asynchrones : sémantique réelle des payloads
 
@@ -85,6 +85,6 @@ Fiabilité : l'émission d'un like est faite après l'écriture Neo4j, hors tran
 3. Lecture des **commentaires d'un utilisateur**, datés (RPC `ms-post`, index d'auteur déjà présent).
 4. Une trace **datée des likes** (le graphe n'a pas de dates).
 5. Un **index** `("authorId", "createdAt" DESC)` sur la table des posts.
-6. Un câblage des **médias** (`mediaStatus`) si un filtre de visibilité est souhaité.
+6. (Fait depuis le 2026-10-11) Le câblage des **médias** (`mediaStatus`) est en place dans `ms-post` ; le filtre de visibilité du feed peut être strict.
 7. Une stratégie de **démarrage à froid** (un compte neuf ne suit personne) et de **découverte** (rien dans ce design ne remonte un auteur totalement inconnu).
 8. Un moyen d'**appliquer les blocages à la lecture** (ils ne sont aujourd'hui appliqués qu'au calcul).
