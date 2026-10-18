@@ -281,4 +281,4 @@ Ordre de dépendance : `2.1` -> `1.1` -> `1.2` -> `1.3` (publication npm-package
 
 ## 4. Création dans Notion
 
-Chaque ticket est créé dans la base Backlogs avec le corps de [17](17-format-des-tickets-notion.md) section 4 (contexte, problème, tâche, aide, références, étapes à cocher, définitions de terminé, dépendances et estimation). La création n'est lancée qu'après validation explicite de cette liste.
+Chaque ticket est créé dans la base Backlogs avec le corps de [17](17-format-des-tickets-notion.md) section 4 (contexte, problème, tâche, aide, références, étapes à cocher, définitions de terminé, dépendances et estimation). **Statut : les 16 tickets ont été créés dans Notion le 2026-10-18** (EPIC `MS Ranking`, État `todo`), avec leurs relations `Bloqué par` et `Bloque` (relations doubles : renseigner un côté remplit l'autre). Toute modification ultérieure du plan se fait dans Notion et dans ce fichier.
