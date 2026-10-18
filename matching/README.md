@@ -44,6 +44,7 @@ Ce dossier décrit, de bout en bout, un nouveau microservice qui calcule en arri
 | [14 - Plan d'implémentation](14-plan-d-implementation.md) | **Source des tickets** : ordre, dépôts, skills, critères d'acceptation (RK-01 à RK-23) |
 | [15 - Application](15-nativapp.md) | Périmètre front, faits relevés, changements N1 à N9, parcours à vérifier |
 | [16 - Jev ou embeddings](16-jev-ou-embeddings.md) | Arbitrage du scorer sémantique et critère de mesure |
+| [17 - Format des tickets Notion](17-format-des-tickets-notion.md) | Gabarit relevé dans la base Backlogs (EPIC stockage de fichier), règles de conversion du plan 14 |
 
 ## Décisions d'architecture (ADR synthétiques)
 
