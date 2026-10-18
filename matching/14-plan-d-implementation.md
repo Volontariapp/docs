@@ -45,9 +45,9 @@ Skill : `volontariapp-shared-npm-package-change`. Une seule branche, un seul cha
 | :--- | :--- | :--- | :--- |
 | RK-04 | `shared` | `Streams` : `RANKING_JOB_OUTBOX_SUCCESS` (`ranking:job:outbox:success`), `RANKING_JOB_OUTBOX_FAILURE`, `USER_DELETED_RANKING` (`user:deleted:ranking`), ajoutés à l'union de types | build et tests verts |
 | RK-05 | `messaging` | Jobs `src/jobs/ranking/{payloads,queue}.ts` (`COMPUTE_USER_RANKING`, `COMPUTE_USER_FEED`, `FANOUT_RANKING`) enregistrés dans `src/jobs/index.ts` ; événements `USER_RANKING_DELETED` et `USER_RANKING_DELETION_FAILED` ; notification WebSocket `RANKING_READY` ajoutée à `JOB_TO_EVENT_MAPPING` et `EVENT_EVENT_TO_WS_EVENT_MAPPING` ([04](04-flux-asynchrone.md) section 9) | un test de mapping couvre `getEventForJob('ranking.compute_user_ranking')` |
-| RK-05b | `contracts` | DTO web du ranking dans `src/gateway/ranking/` si ce dossier est écrit à la main. **À vérifier d'abord** : le README dit que `src/` est généré, mais `src/gateway/` contient des types dérivés (`feed.request.ts`). Si généré, rien à écrire | décision consignée dans le ticket |
+| RK-05b | `contracts` | DTO web du ranking écrits **à la main** dans `src/gateway/ranking/{request,response}/` (types `*Request` et `*WebResponse` partagés par la gateway et l'application), sur le modèle de `src/gateway/social/request/feed.request.ts`. Le reste de `contracts` est généré par la CI depuis les `.proto` : ne pas y toucher | types exportés par l'index ; build vert |
 | RK-06 | `domain-user` | `requestDeletionWithUserDeleted` ajoute `Streams.USER_DELETED_RANKING` aux `targetServices` (`postgres-user.repository.ts:110`) ; test d'intégration `user-deletion.int.spec.ts` mis à jour | le test liste le nouveau stream |
-| RK-07 | `domain-ranking` (nouveau) | Entités et modèles de [03](03-modele-de-donnees.md) ; repositories TypeORM ; services purs : score événement ([05](05-scoring-et-jev.md)), popularité, score post ([11](11-feed-conception.md) section 5), codes d'explication, coalescence ; port `RankingScorer` et `NoopRankingScorer` ; limiteur de débit à seau ([13](13-decisions-v1.md) section 3 bis) ; chiffrement de la position ; migrations de test copiées par `sync-migrations.sh` | services testés sans infrastructure ; couverture des cas limites de [05](05-scoring-et-jev.md) |
+| RK-07 | `domain-ranking` (nouveau) | Entités et modèles de [03](03-modele-de-donnees.md) ; repositories TypeORM ; services purs : score événement ([05](05-scoring-et-jev.md)), popularité, score post ([11](11-feed-conception.md) section 5), codes d'explication, coalescence ; port `RankingScorer` et `NoopRankingScorer` ; limiteur de débit à seau ([13](13-decisions-v1.md) section 3 bis) ; chiffrement de la position et du journal de likes ([13](13-decisions-v1.md) section 3 bis) ; migrations de test copiées par `sync-migrations.sh` | services testés sans infrastructure ; couverture des cas limites de [05](05-scoring-et-jev.md) |
 | RK-08 | `domain-post` | Implémentation des trois lectures de RK-03 (index `("authorId","createdAt" DESC)` côté migration `ms-post`, RK-11) | tests d'intégration sur plafond par auteur et identifiants absents |
 
 `domain-social` ne change pas : `getRecommendedEventIds(userId, filters, pagination)` prend déjà un `userId` (fait relevé dans [01](01-etat-des-lieux.md) section 1).
@@ -83,11 +83,11 @@ Ordre interne : RK-12 -> RK-13 -> RK-14 -> RK-15 en parallèle possible après R
 
 ## 8. Phase 6 : déploiement et CI
 
-Skills : `volontariapp-deploy-gitops`, `volontariapp-sealed-secrets`, `volontariapp-ci-tools`.
+Skills : `volontariapp-deploy-gitops`, `volontariapp-sealed-secrets` (`volontariapp-ci-tools` plus tard).
 
 | ID | Livrable | Fait quand |
 | :--- | :--- | :--- |
-| RK-18 | `deploy/apps/base/ms-ranking/` (4 déploiements : service, outbox, post-processor, worker), `service.yaml`, base PostgreSQL, NetworkPolicies, overlays ; secrets scellés `TYPESAFE_API_KEY`, clé de chiffrement de la position (32 octets aléatoires), clé de signature interne (**G3**, étape humaine : skill `wizard`) ; `ci-tools` : service PostgreSQL du `docker-compose` local ; racine `meta` : `sync-migrations.sh` (ajouter `"ranking"`), `e2e-matrix.json` de chaque `ms-*` concerné ; déploiement (**G4**) dans l'ordre RK-14 puis RK-16 | `kustomize build` valide ; les pods démarrent ; une suppression de compte de test réussit |
+| RK-18 | `deploy/apps/base/ms-ranking/` (4 déploiements : service, outbox, post-processor, worker), `service.yaml`, base PostgreSQL, NetworkPolicies, overlays ; secrets scellés `TYPESAFE_API_KEY`, clés de chiffrement `RANKING_LOCATION_KEY` et `RANKING_LIKE_KEY` (32 octets aléatoires chacune), clé de signature interne (**G3**, étape humaine : skill `wizard`) ; `ci-tools` : **reporté** (décision du 2026-10-18) ; racine `meta` : `sync-migrations.sh` (ajouter `"ranking"`), `e2e-matrix.json` de chaque `ms-*` concerné ; déploiement (**G4**) dans l'ordre RK-14 puis RK-16 | `kustomize build` valide ; les pods démarrent ; une suppression de compte de test réussit |
 
 ## 9. Phase 7 : application
 

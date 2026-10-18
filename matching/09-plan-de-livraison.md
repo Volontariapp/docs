@@ -17,7 +17,7 @@ Ce plan intègre les résultats d'une revue indépendante (agent senior, lecture
 | 4 | `ms-ranking`, `outbox-ranking`, `worker-ranking`, `post-processor-ranking` | nouveau domaine | tests, images, `yarn up` |
 | 4 bis | `ws-service` | `USER_RANKING_DELETED` ajouté aux `expects` du gather `user.deleted` (`config/default.config.json`) et post-processors de feedback correspondants | tests ; à déployer **après** `post-processor-ranking` (sinon chaque suppression de compte échoue au bout de 60 s) |
 | 5 | `api-gateway` | `GET /ranking/events`, `POST /ranking/refresh` | tests |
-| 6 | `deploy`, `ci-tools`, racine `meta` | manifestes, secrets, NetworkPolicies, CI, `e2e-matrix`, `sync-migrations.sh` | `kubeseal` par le Lead Dev (étape humaine : skill `wizard`) |
+| 6 | `deploy`, racine `meta` (`ci-tools` reporté) | manifestes, secrets, NetworkPolicies, CI, `e2e-matrix`, `sync-migrations.sh` | `kubeseal` par le Lead Dev (étape humaine : skill `wizard`) |
 | 7 | `nativapp` | hook, discrimination du 206, handler de notification, écran | tests |
 
 Le hook `.claude/hooks/stop-rule-guard.sh` verrouille mécaniquement les dépôts consommateurs après toute modification de `proto-registry` ou `npm-packages`. Le déverrouillage (`release`) appartient au Lead Dev.

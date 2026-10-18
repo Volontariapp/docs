@@ -22,7 +22,7 @@ Comparer le **texte d'un événement** (nom, tags, 200 premiers caractères de l
 
 1. **Écarter la base vectorielle (C).** Une recherche de plus proches voisins n'a d'intérêt que sur de grands corpus ; ici on compare 150 vecteurs à un seul. Un cosinus en mémoire suffit. Le déploiement de test utilise `postgres:16-alpine` (`ci-tools/docker-compose.yml:171`) ; la disponibilité d'une extension vectorielle en production n'a pas été vérifiée.
 2. **Garder le port `RankingScorer`** ([05](05-scoring-et-jev.md) section 4) : c'est lui qui rend le choix réversible. T1 livre un classement **sans** scorer sémantique (`NoopRankingScorer`).
-3. **Ordre proposé** : RK-21 Jev d'abord (zéro infrastructure, déjà spécifié, clé disponible), puis RK-22 embeddings comme **expérience comparée** sur le même jeu d'essai. L'approche par embeddings est celle qu'un relecteur attend par défaut ; Jev apporte la comparaison et reste un choix défendable parce qu'il est mesuré.
+3. **Ordre confirmé le 2026-10-18** : RK-21 Jev d'abord (zéro infrastructure, déjà spécifié, clé disponible), puis RK-22 embeddings comme **expérience comparée** sur le même jeu d'essai. L'approche par embeddings est celle qu'un relecteur attend par défaut ; Jev apporte la comparaison et reste un choix défendable parce qu'il est mesuré.
 4. **Réponse à « n'est-ce pas surdimensionné ? »** : le classement structurel est livré seul et fonctionne ; le scorer sémantique est un composant interchangeable, retenu ou retiré selon la mesure ci-dessous.
 
 ## 4. Critère de décision (RK-20 puis RK-22)

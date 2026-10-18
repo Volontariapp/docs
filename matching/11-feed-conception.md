@@ -45,17 +45,19 @@ Correction : au lieu d'une migration qui modifie la clé primaire, **`list_kind`
 | Colonne | Type | Rôle |
 | :--- | :--- | :--- |
 | `user_id` | `uuid` | celui qui like (lu dans `payload.authorId` ou `event.emitterId`) |
-| `post_id` | `uuid` | post liké (pas de clé étrangère) |
+| `post_id_enc` | `text` | identifiant du post liké, **chiffré de façon déterministe** (`encryptDeterministic` de `@volontariapp/crypto`, clé `RANKING_LIKE_KEY`) ; pas de clé étrangère |
 | `occurred_at` | `timestamptz` | `event.createdAt` de l'enveloppe |
 | `deleted_at` | `timestamptz` NULL | pierre tombale posée par un unlike |
 | `origin` | `varchar(10)` | `STREAM` ou `BACKFILL` |
 
-PK `(user_id, post_id)` ; index `(user_id, occurred_at DESC)`. `author_id` n'est **pas stocké** : le payload ne le contient pas ([10](10-feed-etat-des-lieux.md) section 4) ; l'auteur du post est résolu au calcul par `ListPostsByIds`.
+PK `(user_id, post_id_enc)` ; index `(user_id, occurred_at DESC)`. `author_id` n'est **pas stocké** : le payload ne le contient pas ([10](10-feed-etat-des-lieux.md) section 4) ; l'auteur du post est résolu au calcul par `ListPostsByIds`.
+
+**Chiffrement (décision du 2026-10-18).** Le lien utilisateur -> post est une donnée comportementale : l'identifiant du post est chiffré avec le paquet déjà utilisé pour les e-mails (`domain-user`). Le mode **déterministe** est volontaire : la clé primaire et les comparaisons d'égalité restent possibles, et le même post donne le même chiffré (compromis assumé : on peut voir que deux lignes visent le même post, pas lequel). `user_id` reste en clair (c'est l'identifiant de partition) ; `occurred_at` aussi. Les identifiants lus dans le graphe ou dans les flux sont chiffrés **en mémoire** avant écriture ou comparaison ; aucun identifiant de post en clair n'est écrit dans cette table. Clé distincte de celle de la position ([13](13-decisions-v1.md) section 3 bis).
 
 Règles d'écriture, qui rendent l'**ordre des événements indifférent** (flux séparés pour like et unlike) :
 
-- `POST_LIKED` : `INSERT ... ON CONFLICT (user_id, post_id) DO UPDATE SET occurred_at = EXCLUDED.occurred_at, deleted_at = NULL WHERE ranking_like_log.deleted_at IS NULL OR ranking_like_log.deleted_at < EXCLUDED.occurred_at`.
-- `POST_UNLIKED` : `INSERT ... (deleted_at = event.createdAt) ON CONFLICT (user_id, post_id) DO UPDATE SET deleted_at = EXCLUDED.deleted_at WHERE ranking_like_log.occurred_at < EXCLUDED.deleted_at`.
+- `POST_LIKED` : `INSERT ... ON CONFLICT (user_id, post_id_enc) DO UPDATE SET occurred_at = EXCLUDED.occurred_at, deleted_at = NULL WHERE ranking_like_log.deleted_at IS NULL OR ranking_like_log.deleted_at < EXCLUDED.occurred_at`.
+- `POST_UNLIKED` : `INSERT ... (deleted_at = event.createdAt) ON CONFLICT (user_id, post_id_enc) DO UPDATE SET deleted_at = EXCLUDED.deleted_at WHERE ranking_like_log.occurred_at < EXCLUDED.deleted_at`.
 - Un unlike arrivé avant son like crée une ligne avec pierre tombale ; le like plus ancien qui arrive ensuite ne la réactive pas (sa date est antérieure).
 
 **Réconciliation avec le graphe, à chaque calcul** : `AdminGetUserLikes` (plafonné à `RANKING_FEED_LIKES_LIMIT` = 200, paginé par 50). Un like du journal absent du graphe reçoit une pierre tombale ; un like du graphe absent du journal est ajouté avec `origin = BACKFILL`. Cela corrige les événements perdus (unlike ou like non publié) et fait du **graphe la vérité pour l'existence** d'un like, le journal n'apportant que la **date**.

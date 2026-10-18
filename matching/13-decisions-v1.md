@@ -34,6 +34,9 @@ Ce fichier consigne les décisions prises avec le Lead Dev le 2026-10-18 et les 
 | 26 | Jev ou embeddings : arbitrage et critère de mesure dans [16](16-jev-ou-embeddings.md). La base vectorielle est écartée. |
 | 27 | Le travail est à but éducatif : pas de contrainte de production, mais les règles du STOP, de la CI et de la sécurité s'appliquent. |
 | 28 | Ordre de travail : documentation complète -> tickets Notion générés depuis [14](14-plan-d-implementation.md) -> implémentation point par point. Aucun code avant les tickets. |
+| 29 | `contracts/src/gateway/` est **écrit à la main** (contrats entre l'application, la gateway et les DTO web) ; tout le reste de `contracts` est **généré** depuis les `.proto` (contrats gRPC entre microservices). Les DTO web du ranking s'écrivent donc à la main dans `npm-packages/packages/contracts/src/gateway/ranking/`. |
+| 30 | Le journal de likes est chiffré avec le même paquet : identifiant de post en mode déterministe, clé `RANKING_LIKE_KEY` (section 3 bis et [11](11-feed-conception.md) section 3). |
+| 31 | Jev avant les embeddings (confirmé) ; `ci-tools` est reporté, on en parlera plus tard. |
 
 ## 2. Poids initiaux
 
@@ -91,6 +94,8 @@ Verdict : **utilisable tel quel** pour la position, avec trois précautions qui 
 1. Fournir une **clé de 32 octets aléatoires** (secret scellé `RANKING_LOCATION_KEY`), jamais un mot de passe : la dérivation SHA-256 sans sel ne convient pas à un secret de faible entropie.
 2. Utiliser `encrypt` (IV aléatoire), pas `encryptDeterministic` : la position n'est jamais recherchée en SQL.
 3. **Lier le chiffré à la ligne** : le texte chiffré est `v1|<userId>|<lat>|<lng>` ; au déchiffrement, vérifier la version et le `userId`. Cela empêche de déplacer un chiffré d'un utilisateur à un autre et prépare une rotation de clé (`v2`).
+
+**Journal de likes** (`ranking_like_log`) : même paquet, clé distincte `RANKING_LIKE_KEY` (32 octets aléatoires, secret scellé). Seul `post_id` est chiffré, avec `encryptDeterministic`, pour garder la clé primaire et l'égalité ; le compromis (deux lignes sur un même post sont reconnaissables) est accepté. Les tables `ranking_event_feedback`, `ranking_event_wish` et `ranking_event_mention` ne sont pas chiffrées en V1 : ce sont des identifiants, comme les relations déjà présentes dans le graphe social (que nous n'avons pas vérifié comme chiffrées ou non).
 
 Amélioration possible plus tard, hors V1 : ajouter l'AAD et un identifiant de clé au paquet (modification de `npm-packages`, donc STOP).
 
@@ -209,6 +214,6 @@ Vérifié : aucune surcharge du gather dans `deploy/apps` ni `deploy/infrastruct
 
 1. Config de `ws-service` : aucune surcharge du gather trouvée dans `deploy/apps` ni `deploy/infrastructure` (recherche de `scatterGather`, `USER_STORAGE_DELETED`, `expects`) ; la modification se fait donc dans `ws-service/config/default.config.json`.
 2. Limites de débit et coût réel de Jev sur un fan-out de 1 000 utilisateurs : à mesurer (RK-21).
-3. `contracts/src/gateway/` est-il écrit à la main ou généré ? (RK-05b).
+3. (Levé le 2026-10-18) `contracts/src/gateway/` est écrit à la main, le reste de `contracts` est généré : décision 29.
 4. Valeurs de départ des poids et de la popularité : à calibrer avec le jeu d'essai (RK-20), en cours de préparation par l'équipe.
 5. Hébergement d'un modèle d'embeddings, seulement si RK-22 est réalisé ([16](16-jev-ou-embeddings.md)).
