@@ -83,21 +83,21 @@ F1 est livrable sans Jev.
 | 10 | Compteur de likes | Inexistant |
 | 11 | Visibilité d'un post | Public, aucun champ de visibilité |
 | - | Enrichissement de la gateway | Aucun |
-| - | Statut des médias | Non renseigné par `ms-post` |
+| - | Statut des médias | Corrigé le 2026-10-18 : `ms-post` renseigne `mediaStatus` ([10](10-feed-etat-des-lieux.md) section 3) |
 
 ### À décider par l'équipe
 
-1. **Jev pour le feed** : proposition, désactivé par défaut.
-2. **Posts déjà likés** : rétrogradation à 0,6 (proposée) ou exclusion.
-3. **Part d'exploration** (auteurs inconnus) et **nom** du feed : sans exploration, « feed d'abonnements » est plus honnête que « Pour toi ».
-4. **Complément `GLOBAL`** pour les comptes neufs, malgré l'absence de modération.
+1. **Jev pour le feed** : désactivé par défaut en V1 (décision maintenue, [13](13-decisions-v1.md)).
+2. **Posts déjà likés ou commentés** : tranché le 2026-10-18, rétrogradation à 0,6, facteur unique.
+3. **Part d'exploration** : tranché le 2026-10-18, le feed est personnalisé (événements souhaités ou participés, abonnements, interactions) ; pas d'exploration au-delà du repli `GLOBAL`. Les routes s'appellent `/ranking/feed`.
+4. **Complément `GLOBAL`** : tranché le 2026-10-18, conservé comme repli après les posts personnels.
 5. **Chiffrement au repos** du journal de likes (`AGENTS.md` section 6 : toute donnée personnelle doit être chiffrée).
-6. **Recalcul sur like/commentaire** : désactivé par défaut ; l'activer avec un délai de 5 minutes pour la démonstration ?
+6. **Recalcul sur like/commentaire** : désactivé par défaut (décision maintenue).
 7. **Correction du feed existant** (aucun `ORDER BY`) : à traiter à part.
 
 ### À vérifier dans le code avant d'implémenter
 
-8. Le travail média en cours éventuel dans une autre branche de `ms-post` / `ms-storage` (la revue a lu `main`).
+8. (Levé le 2026-10-18) Le travail média est fusionné dans `main` : `ms-post` renseigne `mediaStatus`.
 9. Le comportement réel de l'ordre Neo4j sur `SKIP/LIMIT` sans `ORDER BY` (déduit du Cypher, non mesuré) et l'effet réel d'un fan-out sur la page 1 des abonnés.
 10. Si `JOB_TO_EVENT_MAPPING` accepte un enum dédié `ranking` ou impose `EventEventMessagingType`.
 11. La lecture complète de `neo4j-event-post-link.repository.ts` (lignes 24-35 non lues) et des écrans `nativapp` autres que `post.api.ts` / `social.endpoints.ts`.

@@ -86,6 +86,7 @@ Interprétation : si une demande ouverte a un job écrit récemment (moins de `R
 | `ranking_event_feedback` | `user_id`, `event_id` (PK), `action` varchar(10) (`PASS`), `created_at` ; index `(event_id, action)` et `(user_id, created_at DESC)` | swipes à gauche ; exclusion pendant `RANKING_PASS_COOLDOWN_DAYS` et entrée de la popularité ; rétention 90 jours |
 | `ranking_event_wish` | `user_id`, `event_id` (PK), `created_at` ; index `(event_id)` | souhaits actifs, alimentés par `EVENT_SOCIAL_WISHED` (insert `ON CONFLICT DO NOTHING`) et `EVENT_SOCIAL_UNWISHED` (delete) ; un comptage par lignes reste idempotent en cas de rejeu |
 | `ranking_event_mention` | `post_id` PK, `event_id`, `author_id`, `created_at` ; index `(event_id, created_at)` | posts liés à un événement, alimentés par `POST_CREATED` et purgés par `POST_DELETED` ; on compte les auteurs distincts |
+| `ranking_rate_bucket` | `user_id`, `bucket` (PK), `tokens` numeric(6,3), `updated_at` | seau à jetons pour limiter les rafraîchissements à 5 par minute ([13](13-decisions-v1.md) section 3 bis) |
 
 Pas de clé étrangère (les identifiants appartiennent à d'autres services). Le jeu de données démarre vide au déploiement : les souhaits et mentions antérieurs ne sont pas rétro-alimentés (aucune RPC de comptage), la popularité s'appuie d'abord sur le taux de remplissage fourni par `ms-event`.
 

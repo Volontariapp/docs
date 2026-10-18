@@ -2,6 +2,9 @@
 
 Ce plan intègre les résultats d'une revue indépendante (agent senior, lecture seule) : voir la section 7 pour le journal des corrections.
 
+> [!NOTE]
+> L'ordre d'exécution à jour, sous forme de tickets (RK-01 à RK-23), est dans [14](14-plan-d-implementation.md). Ce fichier garde les tranches fonctionnelles, les risques et le scénario de démonstration.
+
 ## 1. Ordre imposé par la règle du STOP
 
 `AGENTS.md` section 1 interdit de coder dans un consommateur tant que l'amont n'est pas publié. Les étapes ne sont **pas** parallélisables.

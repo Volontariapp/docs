@@ -214,6 +214,8 @@ Conséquence pour nous : aucune notification d'échec n'atteindra le client, d'o
 | `RANKING_FEED_LIKES_LIMIT` / `_LOG_RETENTION_DAYS` | 200 / 90 | likes réconciliés par calcul, rétention du journal |
 | `RANKING_FEED_RECOMPUTE_ON_SIGNAL` | `false` | recalcul sur like ou commentaire (délai de 5 min si activé) |
 | `RANKING_FEED_JEV_ENABLED` | `false` | composante sémantique du feed |
+| `RANKING_REFRESH_BUCKET_CAPACITY` / `RANKING_REFRESH_WINDOW_SECONDS` | 5 / 60 | seau à jetons des rafraîchissements ([13](13-decisions-v1.md) section 3 bis) |
+| `RANKING_LOCATION_KEY` | aucun | clé de 32 octets aléatoires pour chiffrer la position (secret scellé) |
 | `TYPESAFE_API_KEY` | aucun | clé API Jev (SealedSecret) |
 | `JEV_TIMEOUT_MS` | 10000 | délai d'une requête Jev (à valider par la mesure) |
 

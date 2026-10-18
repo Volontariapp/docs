@@ -64,7 +64,7 @@ Rétention : lignes de plus de `RANKING_FEED_LOG_RETENTION_DAYS` (90) et pierres
 
 ### `ranking_post_score`
 
-Comme `ranking_score` : `user_id`, `post_id`, `score`, `structural_score`, `semantic_score` NULL, `rank` (`integer`), `computed_at`, plus `author_id` (utile à la diversité et au diagnostic) et `origin` (`FOLLOWED`, `ENGAGED`, `EVENT`, `GLOBAL`). PK `(user_id, post_id)` ; index `(user_id, rank)`. Taille `RANKING_FEED_LIST_SIZE` (100).
+Comme `ranking_score` : `user_id`, `post_id`, `score`, `structural_score`, `semantic_score` NULL, `rank` (`integer`), `reasons` (codes d'explication, 2 au plus), `computed_at`, plus `author_id` (utile à la diversité et au diagnostic) et `origin` (`FOLLOWED`, `ENGAGED`, `EVENT`, `GLOBAL`). PK `(user_id, post_id)` ; index `(user_id, rank)`. Taille `RANKING_FEED_LIST_SIZE` (100).
 
 ### `ranking_run` et `ranking_request`
 
@@ -239,7 +239,7 @@ Le feed existant (`GET /api/v1/social/feed/me`) n'est utilisé par **aucun écra
 
 ## 11. Déploiement à chaud
 
-À la mise en production, aucun utilisateur existant n'a de liste `POST` : chaque premier appel produit un 206 et un calcul à la demande, soit une rafale. Parades : concurrence du worker bornée, file `fallback` dédiée, et un indicateur de déploiement progressif (`RANKING_FEED_ENABLED`, activable par cohorte ou globalement) pour échelonner l'ouverture.
+À la mise en production, aucun utilisateur existant n'a de liste `POST` : chaque premier appel produit un 206 et un calcul à la demande, soit une rafale. Parades : concurrence du worker bornée, file `fallback` dédiée, et un indicateur de déploiement progressif (`RANKING_FEED_ENABLED`, activable par cohorte ou globalement) pour échelonner l'ouverture. **Mise à jour du 2026-10-18** : l'indicateur de déploiement progressif est supprimé (aucun client, pas de staging, [13](13-decisions-v1.md) décision 17) ; seules la concurrence bornée et la file de repli dédiée restent utiles.
 
 ## 12. Ce qui est volontairement écarté
 

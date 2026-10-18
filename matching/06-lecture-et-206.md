@@ -147,5 +147,5 @@ Routes ajoutées par les décisions de [13](13-decisions-v1.md) :
 | `PUT /ranking/location` | l'application envoie la position à l'ouverture ; arrondie à 1 km, chiffrée, recalcul seulement après un déplacement de plus de 10 km |
 | `POST /ranking/events/feedback` | enregistre en lot les swipes à gauche (`PASS`) |
 | `GET /ranking/events?cursor=...&limit=20` | lecture par lot de 20 avec curseur et `listVersion` (à la place d'un `OFFSET`) |
-| `GET /ranking/events?refresh=true` | demande un recalcul (`MANUAL`) et sert le pool actuel en attendant la notification ; limité en fréquence |
+| `GET /ranking/events?refresh=true` | demande un recalcul (`MANUAL`) et sert le pool actuel en attendant la notification ; limité à 5 par minute et par utilisateur (seau à jetons, [13](13-decisions-v1.md) section 3 bis) ; au-delà, `refreshThrottled = true`, HTTP 200, aucun recalcul |
 | `GET /ranking/feed` | feed de posts, mêmes règles de lecture ([11](11-feed-conception.md) section 8) |

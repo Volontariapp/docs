@@ -27,6 +27,13 @@ Ce fichier consigne les décisions prises avec le Lead Dev le 2026-10-18 et les 
 | 19 | Le complément `GLOBAL` du feed est conservé comme repli, après les posts personnels. |
 | 20 | Les faux utilisateurs avec historiques sont en cours de préparation par l'équipe (jeu d'essai pour valider le classement). |
 | 21 | Le feed existant `GET /api/v1/social/feed/me` n'est consommé par aucun écran (section 9) : on ne le touche pas. |
+| 22 | Les changements de `nativapp` font partie du chantier, **en dernier** ([15](15-nativapp.md)). La **carte** reste en dehors du ranking pour l'instant et ne doit pas être cassée : `useGetEvents` n'est pas modifié. |
+| 23 | Limite de rafraîchissement : **5 par minute et par utilisateur**, seau à jetons dans PostgreSQL (section 3 bis). Au-delà, la liste actuelle est servie sans recalcul et sans erreur (`refreshThrottled`). |
+| 24 | Chiffrement de la position : le paquet `@volontariapp/crypto` est jugé suffisant (AES-256-GCM) avec trois précautions (section 3 bis). Pas de nouvelle bibliothèque. |
+| 25 | Le feed de posts porte lui aussi des codes d'explication (`reasons`). Ils ne sont pas affichés par l'application pour l'instant. |
+| 26 | Jev ou embeddings : arbitrage et critère de mesure dans [16](16-jev-ou-embeddings.md). La base vectorielle est écartée. |
+| 27 | Le travail est à but éducatif : pas de contrainte de production, mais les règles du STOP, de la CI et de la sécurité s'appliquent. |
+| 28 | Ordre de travail : documentation complète -> tickets Notion générés depuis [14](14-plan-d-implementation.md) -> implémentation point par point. Aucun code avant les tickets. |
 
 ## 2. Poids initiaux
 
@@ -63,10 +70,46 @@ Faits : l'écran de swipe utilise déjà la position de l'appareil (`useLocation
 
 Conception :
 
-- Table `ranking_user_location` ([03](03-modele-de-donnees.md) section 2 bis). `lat` et `lng` sont arrondis à 1 km avant stockage et chiffrés au repos (`AGENTS.md` section 6). Le mécanisme de chiffrement reste à choisir (le paquet `npm-packages/packages/crypto` existe, non évalué).
+- Table `ranking_user_location` ([03](03-modele-de-donnees.md) section 2 bis). `lat` et `lng` sont arrondis à 1 km avant stockage et chiffrés au repos (`AGENTS.md` section 6). Chiffrement : `@volontariapp/crypto` (AES-256-GCM) avec les précautions de la section 3 bis.
 - `PUT /ranking/location` (gateway) vers une commande gRPC `UpdateUserLocation`. Si la nouvelle position est à plus de 10 km de la précédente (`RANKING_LOCATION_REFRESH_KM`), une demande `STALE_REFRESH` est écrite.
 - Repli sans position (permission refusée) : zone d'origine déduite de l'historique, c'est-à-dire le centre des événements déjà souhaités ou participés (option c). Sans historique ni position, le terme de proximité est neutre (0,5).
 - La purge de la position fait partie du post-processor de suppression de compte.
+
+## 3 bis. Chiffrement de la position et limite de débit
+
+**Évaluation de `@volontariapp/crypto`** (`npm-packages/packages/crypto`, utilisé uniquement par `domain-user`, 3 fichiers d'après `find_dependents`) :
+
+| Point | Constat | Source |
+| :--- | :--- | :--- |
+| Algorithme | AES-256-GCM, IV aléatoire de 12 octets, étiquette d'authentification ; format `iv:tag:donnée` en hexadécimal | `src/symmetric/cipher.ts:8-26` |
+| Clé | une clé de 32 octets est utilisée telle quelle ; tout autre secret est haché par SHA-256 sans sel | `src/symmetric/kdf.ts:4-14` |
+| Usage éprouvé | chiffrement déterministe des e-mails dans `domain-user` | `postgres-user.repository.ts:15,32,39,44` |
+| Manques | pas de données authentifiées additionnelles (AAD), pas d'identifiant de version de clé | `cipher.ts` |
+
+Verdict : **utilisable tel quel** pour la position, avec trois précautions qui évitent de modifier le paquet (donc le STOP) :
+
+1. Fournir une **clé de 32 octets aléatoires** (secret scellé `RANKING_LOCATION_KEY`), jamais un mot de passe : la dérivation SHA-256 sans sel ne convient pas à un secret de faible entropie.
+2. Utiliser `encrypt` (IV aléatoire), pas `encryptDeterministic` : la position n'est jamais recherchée en SQL.
+3. **Lier le chiffré à la ligne** : le texte chiffré est `v1|<userId>|<lat>|<lng>` ; au déchiffrement, vérifier la version et le `userId`. Cela empêche de déplacer un chiffré d'un utilisateur à un autre et prépare une rotation de clé (`v2`).
+
+Amélioration possible plus tard, hors V1 : ajouter l'AAD et un identifiant de clé au paquet (modification de `npm-packages`, donc STOP).
+
+**Limite de débit des rafraîchissements** : 5 par minute et par utilisateur. Ni la gateway ni les `ms-*` n'utilisent Redis ou un limiteur de débit (recherche de `Throttler`, `rate limit` et `ioredis` dans `api-gateway/src` et les `package.json`, aucun résultat) ; le seau vit donc dans PostgreSQL, dans `ms-ranking`, sans nouvelle infrastructure.
+
+Table `ranking_rate_bucket(user_id uuid, bucket varchar(20), tokens numeric(6,3), updated_at timestamptz)`, clé `(user_id, bucket)` ; seau `REFRESH` ; capacité `RANKING_REFRESH_BUCKET_CAPACITY` = 5 ; fenêtre `RANKING_REFRESH_WINDOW_SECONDS` = 60 (recharge de 5 jetons par minute, en continu). Prélèvement atomique :
+
+```sql
+INSERT INTO ranking_rate_bucket AS b (user_id, bucket, tokens, updated_at)
+VALUES ($1, 'REFRESH', $2 - 1, now())
+ON CONFLICT (user_id, bucket) DO UPDATE
+  SET tokens = LEAST($2, b.tokens + EXTRACT(EPOCH FROM (now() - b.updated_at)) * ($2 / $3)) - 1,
+      updated_at = now()
+  WHERE LEAST($2, b.tokens + EXTRACT(EPOCH FROM (now() - b.updated_at)) * ($2 / $3)) >= 1
+RETURNING tokens;
+```
+
+`$2` = capacité, `$3` = fenêtre en secondes. Une ligne retournée = autorisé ; aucune ligne = limité. Dans ce dernier cas, `ms-ranking` sert la liste actuelle, n'écrit aucun job et renvoie `refreshThrottled = true` (HTTP 200). `TooManyRequestsError` (429) existe dans `@volontariapp/errors` mais n'est pas utilisée ici, pour que l'application n'affiche pas d'erreur. Les lignes sont purgées avec le compte et celles inactives depuis plus d'un jour sont supprimées lors d'une écriture.
+
 
 ## 4. Interface de swipe
 
@@ -97,6 +140,17 @@ Entrées, toutes disponibles sans scheduler ni appel par événement :
 | Passes | table `ranking_event_feedback` | n'existe pas encore (section 4) |
 | Taux de remplissage | `currentParticipants / maxParticipants`, renvoyés par `ms-event` | champs de `EventEntity` (`domain-event/src/entities/event.entity.ts:19-20`) |
 | Mentions | table `ranking_event_mention`, alimentée par `POST_CREATED` | le payload porte un `eventId` optionnel et le `userId` de l'auteur (`IPostCreatedPayload`) |
+
+Paramètres initiaux de la popularité (confiance déléguée au Lead Dev pour la fenêtre et la pondération, 2026-10-18) :
+
+| Paramètre | Valeur | Raison |
+| :--- | :--- | :--- |
+| Fenêtre des mentions | 14 jours | un événement est en général annoncé quelques semaines avant ; plus court, le signal est trop bruité |
+| A priori sur les votes | +2 souhaits, +2 passes fictifs | un événement à deux votes ne devient pas extrême ; sans vote, `interest` = 0,5 |
+| Saturation des mentions | 10 auteurs distincts | au-delà, un auteur de plus n'apporte presque rien (échelle logarithmique) |
+| Poids dans la popularité | intérêt 0,4, remplissage 0,3, mentions 0,3 | l'intérêt exprimé directement pèse plus qu'un signal indirect |
+| Poids dans le score | 0,10 | un coup de pouce, jamais un facteur dominant : la proximité et le goût restent premiers |
+| Remise à zéro | dès que l'événement n'est plus candidat | un événement terminé ou commencé ne gagne plus rien |
 
 Limites assumées : les souhaits et mentions antérieurs au déploiement ne sont pas rétro-alimentés ; on compte des auteurs distincts pour limiter la manipulation ; un événement sans vote reste neutre.
 
@@ -153,9 +207,8 @@ Vérifié : aucune surcharge du gather dans `deploy/apps` ni `deploy/infrastruct
 
 ## 10. Points encore ouverts
 
-1. Mécanisme de chiffrement de la position (section 3).
-2. Limite de fréquence du rafraîchissement explicite : une demande par minute proposée.
-3. Config de `ws-service` : aucune surcharge du gather trouvée dans `deploy/apps` ni `deploy/infrastructure` (recherche de `scatterGather`, `USER_STORAGE_DELETED`, `expects`) ; la modification se fait donc dans `ws-service/config/default.config.json`.
-4. Limites de débit et coût réel de Jev sur un fan-out de 1 000 utilisateurs.
-5. Périmètre front : les changements de `nativapp` (route de position, envoi des `PASS`, écran de swipe branché sur `/ranking/events`, traduction des codes) relèvent-ils de ce chantier ? Les règles de `nativapp/CLAUDE.md` imposent la lecture de ses skills React Native avant toute tâche front.
-6. Valeurs de départ de la popularité et des poids : à calibrer avec le jeu d'essai.
+1. Config de `ws-service` : aucune surcharge du gather trouvée dans `deploy/apps` ni `deploy/infrastructure` (recherche de `scatterGather`, `USER_STORAGE_DELETED`, `expects`) ; la modification se fait donc dans `ws-service/config/default.config.json`.
+2. Limites de débit et coût réel de Jev sur un fan-out de 1 000 utilisateurs : à mesurer (RK-21).
+3. `contracts/src/gateway/` est-il écrit à la main ou généré ? (RK-05b).
+4. Valeurs de départ des poids et de la popularité : à calibrer avec le jeu d'essai (RK-20), en cours de préparation par l'équipe.
+5. Hébergement d'un modèle d'embeddings, seulement si RK-22 est réalisé ([16](16-jev-ou-embeddings.md)).

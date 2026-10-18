@@ -5,6 +5,12 @@ Ce dossier décrit, de bout en bout, un nouveau microservice qui calcule en arri
 > [!NOTE]
 > **Statut : proposition de conception, rien n'est implémenté.** Les faits sur le code existant sont vérifiés et référencés. Ce qui est à créer est signalé comme tel, et ce qui reste à confirmer est listé dans [09](09-plan-de-livraison.md). **Le nom `ms-ranking` est décidé** (2026-10-18, ADR-1) : `ms-affinity` n'était qu'un nom de travail, et `ms-rank` a été écarté parce que `nativapp` utilise déjà « rank » pour les niveaux d'impact (`nativapp/src/shared/lib/impact-ranks.ts`). Décisions de la V1 : [13](13-decisions-v1.md).
 
+## Par où commencer
+
+1. [13](13-decisions-v1.md) : ce qui est décidé (prime sur 01 à 12 en cas de divergence).
+2. [14](14-plan-d-implementation.md) : ce qu'il faut faire, dans quel ordre.
+3. 02 à 12 : le détail technique d'une étape (modèle de données, flux, scoring, lecture, création, tests, risques).
+
 ## Principe en cinq lignes
 
 1. **Toute écriture est asynchrone.** Un événement de la plateforme (inscription, souhait, nouvel événement, événement terminé) déclenche un **job** de calcul.
@@ -34,7 +40,10 @@ Ce dossier décrit, de bout en bout, un nouveau microservice qui calcule en arri
 | [10 - Feed de posts : état des lieux](10-feed-etat-des-lieux.md) | Extension : ce que la plateforme sait déjà des posts, likes, commentaires, follows |
 | [11 - Feed de posts : conception](11-feed-conception.md) | Signaux, registre daté, candidats, score, déclencheurs, lecture |
 | [12 - Feed de posts : plan et risques](12-feed-plan-et-risques.md) | Dépôts concernés, tranches, tests, risques, questions ouvertes |
-| [13 - Décisions de la V1](13-decisions-v1.md) | Décisions validées le 2026-10-18, géographie, swipe, popularité, points ouverts |
+| [13 - Décisions de la V1](13-decisions-v1.md) | **À lire en premier.** Décisions validées le 2026-10-18, géographie, swipe, popularité, codes d'explication, suppression de compte |
+| [14 - Plan d'implémentation](14-plan-d-implementation.md) | **Source des tickets** : ordre, dépôts, skills, critères d'acceptation (RK-01 à RK-23) |
+| [15 - Application](15-nativapp.md) | Périmètre front, faits relevés, changements N1 à N9, parcours à vérifier |
+| [16 - Jev ou embeddings](16-jev-ou-embeddings.md) | Arbitrage du scorer sémantique et critère de mesure |
 
 ## Décisions d'architecture (ADR synthétiques)
 
