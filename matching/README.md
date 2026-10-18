@@ -45,7 +45,7 @@ Ce dossier décrit, de bout en bout, un nouveau microservice qui calcule en arri
 | [15 - Application](15-nativapp.md) | Périmètre front, faits relevés, changements N1 à N9, parcours à vérifier |
 | [16 - Jev ou embeddings](16-jev-ou-embeddings.md) | Arbitrage du scorer sémantique et critère de mesure |
 | [17 - Format des tickets Notion](17-format-des-tickets-notion.md) | Gabarit relevé dans la base Backlogs (EPIC stockage de fichier), règles de conversion du plan 14 |
-| [18 - Tickets par PR](18-tickets-par-pr.md) | 16 tickets condensés (un lot de travail par PR, 3 h au plus), réglages communs, dépendances |
+| [18 - Tickets par PR](18-tickets-par-pr.md) | 17 tickets condensés (un lot de travail par PR, 3 h au plus), réglages communs, dépendances |
 
 ## Décisions d'architecture (ADR synthétiques)
 

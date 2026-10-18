@@ -17,7 +17,7 @@ Ce fichier est la source des tickets. Chaque ligne `RK-xx` devient un ticket Not
 Phase 1  proto-registry ........ RK-01 RK-02 RK-03        -> G1 (merge) -> PR auto npm-packages
 Phase 2  npm-packages .......... RK-04 .. RK-09           -> G2 (publication CI)
 Phase 3  ms-social, ms-post .... RK-10 RK-11              (yarn up des paquets publiés)
-Phase 4  nouveau domaine ....... RK-12 RK-12b RK-13 .. RK-16
+Phase 4  nouveau domaine ....... RK-00 RK-12 RK-12b RK-13 .. RK-16
 Phase 5  api-gateway ........... RK-17
 Phase 6  deploy, secrets ....... RK-18a .. RK-18d         -> G3, G4 (deux vagues)
 Phase 7  nativapp .............. RK-19                    (en dernier ; la carte n'est pas touchée)
@@ -68,6 +68,7 @@ Skills : `volontariapp-scaffold-microservice` (séquence), `volontariapp-impleme
 
 | ID | Dépôt | Livrable | Fait quand |
 | :--- | :--- | :--- | :--- |
+| RK-00 | Dépôt `Volontariapp/ms-ranking`, `ci-tools`, `deploy` | Création du dépôt GitHub (main protégée), sous-module `ci-tools`, `ci.yml` et `e2e-matrix.json` calqués sur `ms-storage`, hooks (`install-skill-hooks.sh`), base PostgreSQL de test dans `ci-tools/docker-compose.yml` (`postgres-ranking`, `ms-ranking-migration`) car `service-ci.yml` déduit `postgres-<nom>` du nom du service, sous-module `submodules/ms-ranking` dans `deploy`, accès aux secrets d'organisation (`ORG_REPO_TOKEN`), détection des nouveaux dossiers par les dépôts runners | la CI démarre `postgres-ranking` sur un push de `ms-ranking` ; le sous-module apparaît dans `deploy` |
 | RK-12 | `ms-ranking` (**nouveau dépôt**) | Amorçage, base PostgreSQL, `data-source.ts`, migrations communes + `CreateRankingTables` ; contrôleurs query (`GetRankingEvents`, `GetRankingFeed`, avec `list_kind`) et command (`RequestRankingRefresh`, `UpdateUserLocation` limité par le seau `LOCATION`, `RecordEventFeedback` plafonné à 50 éléments par `@ArrayMaxSize(50)`) ; lecture avec `FALLBACK_ACTIVATED` si aucune liste ([06](06-lecture-et-206.md)) ; seau `REFRESH` | `yarn test` vert ; la lecture sans liste écrit le job hors transaction puis lève le 206 ; le sixième rafraîchissement d'une minute renvoie `refreshThrottled` ; un lot de 51 `PASS` est refusé |
 | RK-12b | `ms-ranking`, `worker-ranking`, `post-processor-ranking` | Configuration par environnement : `config/{default,development,local,production,test}.config.json` et `custom-env-vars.json` avec les clés `RANKING_*` de [04](04-flux-asynchrone.md) section 11 ; `auth.internalPrivateKeyPath` et dossier `certs/` du worker ; `service.datadog.yaml` | un démarrage local lit la configuration de chaque environnement sans clé manquante |
 | RK-13 | `outbox-runners/outbox-ranking` | Démon outbox (copie d'`outbox-social`, sans `domain-ranking`) | un job `PENDING` passe `COMPLETED` et arrive dans BullMQ |

@@ -1,6 +1,6 @@
 # 18 - Tickets Notion : un lot de travail par PR
 
-Décision du 2026-10-18 : au lieu de 50 à 70 petits tickets, **16 tickets condensés, un par lot de travail d'une PR**, de 3 h au plus chacun, avec plusieurs tâches cochables. Une PR peut contenir plusieurs tickets (c'est le cas des paquets `npm-packages`). Source : [14](14-plan-d-implementation.md) ; gabarit : [17](17-format-des-tickets-notion.md).
+Décision du 2026-10-18 : au lieu de 50 à 70 petits tickets, **17 tickets condensés, un par lot de travail d'une PR**, de 3 h au plus chacun, avec plusieurs tâches cochables. Une PR peut contenir plusieurs tickets (c'est le cas des paquets `npm-packages`). Source : [14](14-plan-d-implementation.md) ; gabarit : [17](17-format-des-tickets-notion.md).
 
 ## 1. Réglages communs
 
@@ -14,7 +14,7 @@ Décision du 2026-10-18 : au lieu de 50 à 70 petits tickets, **16 tickets conde
 | Dates | du 19 au 26 octobre 2026 (dernier jour du sprint 8), dans l'ordre des dépendances |
 | Charge et Delais | identiques, 3 h au plus |
 
-Total : **16 tickets, environ 45.0 h**. Les dates tiennent dans la semaine demandée mais ne sont pas réalistes pour une personne seule (plusieurs tickets le même jour) : elles s'ajustent sans toucher aux dépendances.
+Total : **17 tickets, environ 47.5 h**. Les dates tiennent dans la semaine demandée mais ne sont pas réalistes pour une personne seule (plusieurs tickets le même jour) : elles s'ajustent sans toucher aux dépendances.
 
 **Cycles de STOP : 2 seulement.** Un pour `proto-registry` (ticket 2.1) et un pour `npm-packages` (tickets 1.1 à 1.3 sur une seule branche et un seul changeset). Aucun autre dépôt ne passe par un STOP.
 
@@ -22,13 +22,14 @@ Total : **16 tickets, environ 45.0 h**. Les dates tiennent dans la semaine deman
 
 | N° | Ticket | PR | Charge | Date | Bloqué par |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| 0.0 | CI/CD & Infra - Setup du dépôt ms-ranking : GitHub, CI, base PostgreSQL de test et hooks | Création du dépôt Volontariapp/ms-ranking, puis PR dans ci-tools (base de test) et dans deploy (sous-module) | 2h30 | 10-19 | aucun |
 | 2.1 | Protos - ranking, AdminGetRecommendedEventIds et lectures ms-post (STOP) | proto-registry (une seule PR), puis la PR automatique de régénération dans npm-packages | 3h | 10-19 | aucun |
 | 1.1 | NPM - shared, messaging, domain-user, domain-post et contracts web : socle du ranking | npm-packages (une seule branche et un seul changeset pour 1.1, 1.2 et 1.3) | 3h | 10-20 | 2.1 |
-| 1.4 | Infra Kube - manifests ms-ranking, secrets scellés et racine meta | deploy et racine meta (sync-migrations.sh, e2e-matrix, workspace) | 3h | 10-20 | aucun |
+| 1.4 | Infra Kube - manifests ms-ranking, secrets scellés et racine meta | deploy et racine meta (sync-migrations.sh, e2e-matrix, workspace) | 3h | 10-20 | 0.0 |
 | 1.2 | NPM - domain-ranking : modèles, repositories, seaux de débit et chiffrement | npm-packages (même branche que 1.1) | 3h | 10-21 | 1.1 |
 | 1.3 | NPM - domain-ranking : services de score, popularité, codes d'explication et curseur (STOP) | npm-packages (même branche que 1.1 ; fin de la PR, puis changeset et STOP) | 3h | 10-21 | 1.2 |
 | 3.1 | Back - ms-social et ms-post : lectures pour le ranking | ms-social et ms-post (une PR chacun) | 2h30 | 10-22 | 1.3 |
-| 3.2 | Back - ms-ranking : socle, lecture et commandes gRPC | ms-ranking (nouveau dépôt) | 3h | 10-22 | 1.3 |
+| 3.2 | Back - ms-ranking : socle, lecture et commandes gRPC | ms-ranking (nouveau dépôt) | 3h | 10-22 | 1.3, 0.0 |
 | 4.1 | Satellites - outbox-ranking et post-processor-ranking : déclencheurs et purge de compte | outbox-runners (outbox-ranking) et post-processors-runner (post-processor-ranking) | 3h | 10-23 | 1.3, 3.2 |
 | 4.4 | Websockets - ws-service : gather de purge de compte et notification RANKING_READY | ws-service (code après la publication des paquets, déploiement en vague 2) | 1h30 | 10-23 | 4.1 |
 | 4.2 | Workers - worker-ranking : calcul des événements et fan-out | workers-runners (worker-ranking) | 3h | 10-24 | 3.1, 3.2, 4.1 |
@@ -39,9 +40,25 @@ Total : **16 tickets, environ 45.0 h**. Les dates tiennent dans la semaine deman
 | 6.1 | E2E - jeu d'essai, calibrage des poids et démonstration du ranking | ms-ranking et dépôts concernés (tests), documentation | 3h | 10-26 | 5.3, 4.3 |
 | 6.2 | Workers - worker-ranking : adaptateur Jev derrière RankingScorer | workers-runners (worker-ranking) | 3h | 10-26 | 6.1 |
 
-Ordre de dépendance : `2.1` -> `1.1` -> `1.2` -> `1.3` (publication npm-packages) -> `3.1` et `3.2` -> `4.1` -> `4.2` et `4.4` -> `4.3` -> `5.1` -> `5.2` -> `5.3` -> `6.1` -> `6.2`. Le ticket `1.4` (déploiement) est indépendant. **Déploiement du gather en deux vagues** : `4.4` (`ws-service`) ne se déploie qu'après `4.1`.
+Ordre de dépendance : `0.0` -> `3.2` (et `1.4`) ; `2.1` -> `1.1` -> `1.2` -> `1.3` (publication npm-packages) -> `3.1` et `3.2` -> `4.1` -> `4.2` et `4.4` -> `4.3` -> `5.1` -> `5.2` -> `5.3` -> `6.1` -> `6.2`. Le ticket `0.0` (dépôt, CI, base de test) est le premier : il ne dépend de rien et bloque `3.2` et `1.4`. **Déploiement du gather en deux vagues** : `4.4` (`ws-service`) ne se déploie qu'après `4.1`.
 
 ## 3. Détail des tickets
+
+### 0.0 CI/CD & Infra - Setup du dépôt ms-ranking : GitHub, CI, base PostgreSQL de test et hooks
+
+- **PR** : Création du dépôt Volontariapp/ms-ranking, puis PR dans ci-tools (base de test) et dans deploy (sous-module)
+- **Ressources** : CI/CD, Infra, Tooling, Postgres, Docker ; **Priority** : P0 ; **Difficulté** : Moyenne ; **Charge** : 2h30 ; **Date** : 2026-10-19
+- **Bloqué par** : aucun
+- **Objectif** : Créer le dépôt ms-ranking et le raccorder à la CI, à sa base PostgreSQL de test, aux sous-modules et aux hooks.
+- **Tâches** :
+  - 1. Créer le dépôt GitHub et protéger main
+  - 2. Cloner dans le méta-dépôt et ajouter le sous-module ci-tools
+  - 3. Ajouter ci.yml et e2e-matrix.json (modèle ms-storage)
+  - 4. ci-tools : postgres-ranking et ms-ranking-migration dans le docker-compose
+  - 5. deploy : sous-module submodules/ms-ranking
+  - 6. Installer les hooks et vérifier l'accès aux secrets d'organisation
+  - 7. Vérifier que les dépôts runners détectent les nouveaux dossiers
+- **Critères propres** : Le workflow CI se déclenche et démarre postgres-ranking sur un push de ms-ranking ; Le sous-module apparaît dans deploy ; Les hooks de pré-commit sont installés
 
 ### 2.1 Protos - ranking, AdminGetRecommendedEventIds et lectures ms-post (STOP)
 
@@ -78,7 +95,7 @@ Ordre de dépendance : `2.1` -> `1.1` -> `1.2` -> `1.3` (publication npm-package
 
 - **PR** : deploy et racine meta (sync-migrations.sh, e2e-matrix, workspace)
 - **Ressources** : Infra, Kubernetes, Tooling, Postgres ; **Priority** : P1 ; **Difficulté** : Moyenne ; **Charge** : 3h ; **Date** : 2026-10-20
-- **Bloqué par** : aucun
+- **Bloqué par** : 0.0
 - **Objectif** : Préparer le déploiement de ms-ranking : manifestes, base, secrets scellés et outillage de la racine.
 - **Tâches** :
   - 1. Manifestes de base et overlays
@@ -137,7 +154,7 @@ Ordre de dépendance : `2.1` -> `1.1` -> `1.2` -> `1.3` (publication npm-package
 
 - **PR** : ms-ranking (nouveau dépôt)
 - **Ressources** : Backend, GRPC, Postgres, Testing ; **Priority** : P0 ; **Difficulté** : Difficile ; **Charge** : 3h ; **Date** : 2026-10-22
-- **Bloqué par** : 1.3
+- **Bloqué par** : 1.3, 0.0
 - **Objectif** : Créer le microservice ms-ranking : lecture des listes, rafraîchissement, position et retours PASS.
 - **Tâches** :
   - 1. Dépôt, configuration, base et migrations
@@ -281,4 +298,4 @@ Ordre de dépendance : `2.1` -> `1.1` -> `1.2` -> `1.3` (publication npm-package
 
 ## 4. Création dans Notion
 
-Chaque ticket est créé dans la base Backlogs avec le corps de [17](17-format-des-tickets-notion.md) section 4 (contexte, problème, tâche, aide, références, étapes à cocher, définitions de terminé, dépendances et estimation). **Statut : les 16 tickets ont été créés dans Notion le 2026-10-18** (EPIC `MS Ranking`, État `todo`), avec leurs relations `Bloqué par` et `Bloque` (relations doubles : renseigner un côté remplit l'autre). Toute modification ultérieure du plan se fait dans Notion et dans ce fichier.
+Chaque ticket est créé dans la base Backlogs avec le corps de [17](17-format-des-tickets-notion.md) section 4 (contexte, problème, tâche, aide, références, étapes à cocher, définitions de terminé, dépendances et estimation). **Statut : les 17 tickets ont été créés dans Notion le 2026-10-18** (EPIC `MS Ranking`, État `todo`), avec leurs relations `Bloqué par` et `Bloque` (relations doubles : renseigner un côté remplit l'autre). Le ticket `0.0` (setup du dépôt) a été ajouté après coup à la demande du Lead Dev. Toute modification ultérieure du plan se fait dans Notion et dans ce fichier.

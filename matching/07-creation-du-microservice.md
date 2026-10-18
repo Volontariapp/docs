@@ -66,7 +66,7 @@ Skills : `volontariapp-grpc-microservice`. Modèle : `ms-social/` pour la struct
 | `src/common/` | filtre d'exceptions gRPC, pipe de validation |
 | `src/config/data-source.ts` | source de données TypeORM référençant les migrations, **exigée par `sync-migrations.sh`** (modèle `ms-social/src/config/data-source.ts`) |
 | `Dockerfile`, `eslint.config.mjs`, `jest.config.js`, `jest.setup.js`, `tsconfig*.json`, `nest-cli.json`, `package.json`, `.prettierrc`, `.yarnrc.yml`, `LICENSE` | modèle `ms-social/` |
-| `.gitmodules` (sous-module `../ci-tools.git`), `.github/` (workflows), `.husky/` (hooks), `.claudignore`, `.ai-knowledge.md`, `.editorconfig`, `.dockerignore`, `.gitignore`, `certs/` | fichiers de dépôt présents dans les microservices existants |
+| `.gitmodules` (sous-module `../ci-tools.git`), `.github/` (workflows), `.husky/` ou `.githooks/` selon le dépôt modèle (hooks), `.claudignore`, `.ai-knowledge.md`, `.editorconfig`, `.dockerignore`, `.gitignore`, `certs/` | fichiers de dépôt présents dans les microservices existants |
 | `e2e-matrix.json` | **chaque dépôt liste tous les autres** (ex. `api-gateway/e2e-matrix.json` liste `ms-post`, `ms-user`, `ms-event`, `ms-social`, `ms-storage`) : ajouter `ms-ranking` à la matrice de `api-gateway` et de chaque `ms-*` concerné, et créer celle de `ms-ranking` |
 | `service.datadog.yaml` | supervision, modèle `ms-social/service.datadog.yaml` |
 | `README.md`, `ARCHITECTURE.md` | description, schéma de flux |
