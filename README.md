@@ -14,6 +14,7 @@ Nous utilisons le formalisme d'inspiration **C4 Model** pour structurer cette co
 4. **[C4 - Deployment & Infrastructure](C4-Deployment-And-Infrastructure.md)** : La vision GitOps. Comment le code devient une infrastructure sécurisée (Kubernetes, ArgoCD, Sealed Secrets, Network Policies).
 5. **[Structure Monorepo & NPM](Monorepo-Structure.md)** : Comment la logique métier est mutualisée via `@volontariapp/domain-*` sans enfreindre les règles d'isolation des microservices.
 6. **[Stockage de Fichiers](stockage-fichiers/README.md)** : Upload direct S3, quarantaine et scan, rattachement des images aux posts, événements et avatars.
+7. **[Post-processors](post-processors/README.md)** : Notes de conception sur les consommateurs de Redis Streams, le fan-out depuis l'outbox et les DLQ.
 
 ---
 
