@@ -3,7 +3,24 @@
 Ce dossier décrit l'architecture retenue pour le stockage des fichiers (images) dans Volontariapp : images de posts, photos d'événements, photos de profil et icônes de badges.
 
 > [!NOTE]
-> **Statut : Proposition (RFC), révisée après audit.** Le dossier décrit la cible. L'état réel du code au moment de la rédaction est détaillé dans [01-etat-des-lieux.md](01-etat-des-lieux.md). Les décisions encore ouvertes sont listées en bas de cette page.
+> **Statut au 2026-10-28 : implémenté pour les flux principaux (avatar, post, événement) ; purge et nettoyage non réalisés.** Les documents 01 à 11 décrivent la cible et l'état du code au moment de la rédaction (RFC révisée après audit). Pour ce qui existe réellement, le code et la skill `volontariapp-file-storage-flow` font foi. L'état initial du code est conservé dans [01-etat-des-lieux.md](01-etat-des-lieux.md).
+
+## État d'avancement (vérifié dans le code le 2026-10-28)
+
+| Élément | Statut | Où le vérifier |
+| :--- | :--- | :--- |
+| Contrats gRPC du service storage | Fait | `proto-registry` : `GenerateUploadUrl`, `ConfirmUpload`, `ConfirmFileAttachment`, `DeleteFile`, `GetFileMetadata`, `VerifyFilesExist` (déprécié) |
+| `ms-storage` | Fait | Contrôleurs command et query dans `ms-storage/src/modules/storage/controllers/` |
+| Domaine et pipeline | Fait | `npm-packages` : `domain-storage`, `storage-pipeline` (S3, POST signé, magic bytes, clamd, ré-encodage), `storage-client` |
+| Scan asynchrone | Fait | `worker-storage` : handler `scan-file.handler.ts` (job `storage.scan_file`) |
+| Rattachement et libération | Fait | `post-processor-storage` : création, remplacement de couverture ou d'avatar, suppression d'entité, `user.deleted` |
+| API Gateway | Fait | `POST /storage/upload-url`, `POST /storage/files/:id/confirm`, `GET /storage/files/:id` ; `fileIds` relayés par les routes post, event et user |
+| Infrastructure | Fait | `deploy` : MinIO et ClamAV (`storage-infra`), base PostgreSQL de `ms-storage` ; `ci-tools` : `minio`, `minio-init`, `clamd` en local |
+| Client mobile | Fait en partie | `nativapp/src/api/storage/` et `use-post-images.ts` |
+| Publication du résultat de scan aux consommateurs | **À vérifier** | `Streams.STORAGE_FILE_SCANNED`, `STORAGE_FILE_REJECTED` et `STORAGE_ATTACHMENT_REJECTED` existent dans `shared`, mais `FILE_SCAN_RESULT_TARGET_SERVICES` reste `[]` dans `domain-storage` (`origin/main`, 0.12.9) : le pusher d'outbox ignore une ligne `event_queue` sans cible. Effet à confirmer à l'exécution |
+| Nettoyage et purge des orphelins | **Non réalisé** | Le type de job `storage.cleanup_files` existe dans `messaging`, mais `worker-storage` ne contient que le handler de scan |
+
+Les scénarios de panne ([11](11-scenarios-de-panne.md)) et le détail des vagues ([10](10-plan-implementation.md)) n'ont pas été revérifiés ligne à ligne.
 
 ## Principe en une phrase
 

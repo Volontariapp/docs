@@ -174,9 +174,9 @@ C'est le **Scatter-Gather**.
    - Le `Post-Processor-Event` va géocoder l'adresse (appel d'une API de cartographie).
    - Le `Post-Processor-Social` va créer l'événement dans le graphe de la base Neo4j.
 3. Chaque processeur publie son résultat de son côté sur le flux de feedback (`ws:event-created-feedback`) avec le même **Correlation_ID**.
-4. **Gather (Rassemblement)** : Le `ws-service` écoute ces feedbacks. Il sait par configuration qu'il doit attendre **2 réponses** pour cet ID. 
-   - Il stocke temporairement l'état dans Redis via `GatherStateService` (clé: `gather:<correlation_id>` avec un TTL de 60s).
-   - Dès qu'il reçoit `2/2`, il envoie la notification WebSocket de succès (Done) au Frontend.
+4. **Gather (Rassemblement)** : Le `ws-service` écoute ces feedbacks. Il sait par configuration (`scatterGather.aggregations` dans `ws-service/config/default.config.json`) qu'il doit attendre **2 réponses** pour cet ID : pour le déclencheur `event.created`, `GEOCODED_SUCCESS` et `SOCIAL_EVENT_CREATED`.
+   - Il stocke l'état d'agrégation dans la table PostgreSQL `gather_state` de `ws-service` via `GatherStateService` (colonnes `trigger_event` et `gather_events_state` en `jsonb`, une entrée par réponse attendue). Il n'y a ni compteur Redis ni TTL.
+   - Dès que toutes les réponses attendues sont arrivées avec succès, il envoie la notification WebSocket de succès (`event.creation_successfull`, état Done) au Frontend.
 
 ### Et en cas d'erreur ? (Gestion des Sagas)
 
@@ -191,3 +191,15 @@ L'architecture déclenche un flux compensatoire (Compensation Saga) :
 > **Pourquoi le WS-Service écoute-t-il directement les Streams ?**
 > Plutôt que de forcer chaque microservice à faire un appel HTTP vers le Gateway ou le WS-Service pour dire "Mon job est fini", on utilise une approche Event-Driven pure. Le WS-Service est autonome et passif ; il observe les bus d'événements et informe le client, court-circuitant l'API Gateway.
 
+---
+
+## 4. Flux Concrets Construits sur Ces Patterns
+
+Les patterns ci-dessus sont réutilisés tels quels par les fonctionnalités de la plateforme. Chaque dossier détaille son flux de bout en bout.
+
+| Fonctionnalité | Ce que le flux utilise | Documentation |
+| :--- | :--- | :--- |
+| Stockage de fichiers | Job de scan (`storage.scan_file`) vers `worker-storage`, événements `storage:file_scanned` / `storage:file_rejected` / `storage:attachment_rejected`, rattachement confirmé par l'événement de création de l'entité (`post-processor-storage`) | [Stockage de fichiers](../stockage-fichiers/README.md) |
+| Classement personnalisé | Jobs `COMPUTE_USER_RANKING`, `COMPUTE_USER_FEED` et `FANOUT_RANKING` consommés par `worker-ranking`, déclencheurs par `post-processor-ranking`. Le type `RANKING_READY` est défini dans `messaging` et écouté par `nativapp`, mais aucun émetteur n'a été trouvé dans `ws-service`, `workers-runners`, `post-processors-runner` ni `ms-ranking` (ticket RK-16 non réalisé) | [Classement personnalisé](../matching/README.md) |
+| Badges | Un événement métier consommé par `post-processor-user`, qui évalue les règles et écrit `user.badge_awarded` dans la même transaction | [Badges](../badges/README.md) |
+| Suppression de compte | Fan-out de `user.deleted` vers un stream par domaine (`user:deleted:storage`, `user:deleted:ranking`, ...) et gather côté `ws-service` | [Suppression de compte](../suppression-compte/README.md), [Fan-out des streams](../post-processors/01-fan-out-streams-user-deleted.md) |

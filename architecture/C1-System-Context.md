@@ -15,13 +15,16 @@ flowchart TD
     
     subgraph c1 ["Écosystème Volontariapp"]
         frontend["Nativapp (Client)
-        Application React Native ou Web"]
+        Application mobile React Native (Expo)"]
         backend["Volontariapp Backend
         Système central Event-Driven"]
     end
 
     user -- "Interagit avec l'interface UI" --> frontend
     frontend -- "Appels API & WSS" --> backend
+    frontend -- "Upload direct de fichiers (URL signée)" --> s3[("Stockage objet S3")]
+    backend -- "Jugement sémantique (optionnel)" --> jev["Jev (TypeSafe AI)"]
+    backend -- "Stockage et scan des fichiers" --> s3
 ```
 
 ## Description des Composants
@@ -37,7 +40,11 @@ Le point de contact direct avec l'utilisateur. Le client est "bête" (dumb clien
 - Il passe immédiatement dans un **Status: Pending** visuel (Affichage de chargement).
 - Il écoute activement le **ws-service** (WebSockets) pour recevoir un feedback du serveur ("Succès" ou "Erreur") qui lui permettra de passer à l'état **Done**.
 
-### 3. Volontariapp Backend (La Boîte Noire)
+### 3. Les Systèmes Externes
+- **Stockage objet S3** (MinIO) : le client y envoie les images (posts, événements, avatars, icônes de badges) directement, via une URL signée, sans que les octets traversent le backend. Voir [Stockage de fichiers](../stockage-fichiers/README.md).
+- **Jev (TypeSafe AI)** : service d'IA appelé en arrière-plan par `worker-ranking` pour juger la pertinence sémantique d'un événement pour un utilisateur. Optionnel, il se désactive par `RANKING_JEV_ENABLED`. Voir [Classement personnalisé](../matching/README.md).
+
+### 4. Volontariapp Backend (La Boîte Noire)
 C'est le cœur du système, que nous allons ouvrir dans le document **[C2 - Containers](C2-Containers.md)**.
 À ce niveau d'abstraction, le backend est responsable de :
 - L'authentification et l'autorisation.

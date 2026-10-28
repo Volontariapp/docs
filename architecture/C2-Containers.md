@@ -9,31 +9,34 @@ L'architecture est fondamentalement basée sur un modèle de **Microservices Hau
 Une des règles d'or de l'architecture Volontariapp est la distinction entre ce qui appartient en propre à un domaine (Isolé) et ce qui sert de liant à la plateforme (Partagé).
 
 ### 1. Le Périmètre Isolé (L'Anatomie Type d'un Domaine)
-À l'exception de quelques cas particuliers, tous les domaines métiers standards (ex: `ms-event`, `ms-user`, `ms-post`) possèdent une pile d'exécution standardisée et **totalement isolée** (ils ont leur propre dépôt Git, leur propre processus Node.js, et ne partagent pas leur mémoire ni leur base de données) :
-- **Le Microservice API (ex: `ms-event`)** : Expose des contrats gRPC, exécute la logique métier.
+À l'exception de quelques cas particuliers, tous les domaines métiers standards possèdent une pile d'exécution standardisée et **totalement isolée** (ils ont leur propre dépôt Git, leur propre processus Node.js, et ne partagent pas leur mémoire ni leur base de données). Six domaines suivent ce modèle : `user`, `event`, `post`, `social`, `storage` et `ranking`. Pour un domaine `<d>`, la pile comprend :
+- **Le Microservice API (`ms-<d>`)** : Expose des contrats gRPC, exécute la logique métier.
 - **La Base de Données (PostgreSQL)** : Chaque domaine possède sa propre base relationnelle.
-- **L'Outbox Runner (`outbox-runners`)** : Un daemon Lean Node.js qui extrait les événements métier persistés de la base de données.
-- **Les Workers (`workers-runners`)** : Exécutent les tâches asynchrones lourdes spécifiques au domaine.
-- **Les Post-Processors (`post-processors-runner`)** : Consomment les Redis Streams pour finaliser les Sagas ou le nettoyage.
+- **L'Outbox Runner (`outbox-<d>`, dépôt `outbox-runners`)** : Un daemon Lean Node.js qui extrait les événements métier persistés de la base de données.
+- **Les Workers (`worker-<d>`, dépôt `workers-runners`)** : Exécutent les tâches asynchrones lourdes spécifiques au domaine.
+- **Les Post-Processors (`post-processor-<d>`, dépôt `post-processors-runner`)** : Consomment les Redis Streams pour finaliser les Sagas ou le nettoyage.
 
 **Les Exceptions (Domaines Spécifiques) :**
-- **Le Domaine Social (`ms-social`)** : Possède exactement la même structure (Postgres, Outbox, Workers, Post-Processors), mais intègre **en plus** une base de données **Neo4j** propre pour les algorithmes de graphe.
+- **Le Domaine Social (`ms-social`)** : Possède exactement la même structure (Postgres, Outbox, Workers, Post-Processors), mais intègre **en plus** une base de données **Neo4j** propre pour les algorithmes de graphe (abonnements, participations, recommandations).
+- **Le Domaine Storage (`ms-storage`)** : Même structure standard, avec en plus un stockage objet **S3** (MinIO) et un scanner antivirus **ClamAV** (`clamd`). `ms-storage` est le seul propriétaire des fichiers : les autres domaines ne manipulent que des `file_id`. Le client envoie les octets directement sur S3 via une URL signée, dans un bucket privé de quarantaine ; `worker-storage` exécute le scan, puis le fichier est publié. Détail : [Stockage de fichiers](../stockage-fichiers/README.md).
+- **Le Domaine Ranking (`ms-ranking`)** : Même structure standard. Il calcule en arrière-plan un classement personnalisé des événements et des posts (score structurel, scoreur sémantique optionnel **Jev** de TypeSafe AI, activable par `RANKING_JEV_ENABLED`). Le chemin de lecture ne fait aucun appel sortant : tous les appels vers les autres services sont faits par `worker-ranking`. Détail : [Classement personnalisé](../matching/README.md).
 - **Le Domaine WebSocket (`ws-service`)** : Possède sa propre base PostgreSQL et son `outbox-ws`. En revanche, il n'a **pas** de Workers et pas de Post-Processors externes. Il possède un **Redis Dédié** (`db_redis_ws`) en plus du Redis partagé, exclusivement pour gérer le state de ses sessions éphémères.
 
 ### 2. Le Périmètre Partagé
 Ces composants sont l'infrastructure commune qui permet aux domaines de communiquer sans couplage fort :
 - **Redis (Shared)** : Le courtier de messages principal. Il est le seul élément d'infrastructure de données partagé. Il héberge les files d'attente **BullMQ** (pour les Workers) et les **Redis Streams** (pour l'Event-Driven / Post-Processors).
-- **Le code métier (`domain_npm`)** : Hébergé dans le monorepo `npm-packages`, il garantit que tous les services isolés d'un même domaine parlent le même langage métier (Entités, Value Objects).
+- **Le code métier (`domain_npm`)** : Hébergé dans le monorepo `npm-packages`, il garantit que tous les services isolés d'un même domaine parlent le même langage métier (Entités, Value Objects). Les domaines publiés sont `domain-user`, `domain-event`, `domain-post`, `domain-social`, `domain-storage` et `domain-ranking`.
+- **L'observabilité** : Chaque service exporte ses traces via OpenTelemetry (collecteur OTel) vers Datadog ; Jaeger est disponible en local. Les logs passent par `@volontariapp/logger`, qui masque les données personnelles et injecte les identifiants de trace.
 
 ## Diagramme des Containers (C2)
 ```mermaid
 flowchart TD
-    user(["Client Mobile/Web"])
+    user(["Client Mobile (nativapp)"])
 
     subgraph backend ["Backend Volontariapp"]
-        
+
         api_gateway["API Gateway (NestJS)"]
-        
+
         subgraph ws_domain ["Domaine WebSocket (Exception)"]
             ws_service["WS Service (Socket.io)"]
             outbox_ws["Outbox Runner"]
@@ -41,14 +44,14 @@ flowchart TD
             db_redis_ws[("Redis (Dedicated WS)")]
         end
 
-        subgraph domain_event ["Domaine Standard (ex: Event, User)"]
-            ms_event["Microservice API (gRPC)"]
-            outbox_event["Outbox Runner"]
-            worker_event["Workers"]
-            pp_event["Post-Processors"]
-            db_pg_event[("PostgreSQL")]
+        subgraph domain_std ["Domaines Standards (user, event, post, ranking)"]
+            ms_std["Microservice API (gRPC)"]
+            outbox_std["Outbox Runner"]
+            worker_std["Workers"]
+            pp_std["Post-Processors"]
+            db_pg_std[("PostgreSQL")]
         end
-        
+
         subgraph domain_social ["Domaine Social (Exception)"]
             ms_social["Microservice API (gRPC)"]
             outbox_social["Outbox Runner"]
@@ -58,48 +61,69 @@ flowchart TD
             db_neo4j[("Neo4j")]
         end
 
+        subgraph domain_storage ["Domaine Storage (Exception)"]
+            ms_storage["Microservice API (gRPC)"]
+            outbox_storage["Outbox Runner"]
+            worker_storage["Workers (scan)"]
+            pp_storage["Post-Processors"]
+            db_pg_storage[("PostgreSQL")]
+            s3[("S3 / MinIO")]
+            clamd["ClamAV"]
+        end
+
         subgraph shared_infra ["Infrastructure Partagée"]
             db_redis[("Redis (Shared Pub/Sub & Queues)")]
         end
-        
+
         %% --- Alignement forcé vers le bas ---
         db_pg_ws ~~~ db_redis
-        db_pg_event ~~~ db_redis
+        db_pg_std ~~~ db_redis
         db_neo4j ~~~ db_redis
+        db_pg_storage ~~~ db_redis
     end
+
+    jev["Jev (TypeSafe AI, scoreur sémantique)"]
 
     %% --- 1. Trafic Entrant ---
     user -- "HTTPS & WSS" --> api_gateway
-    
+    user -- "Upload direct (URL signée)" --> s3
+
     %% --- 2. Routage Interne (Gateway) ---
     api_gateway -- "WSS (Proxy)" --> ws_service
-    api_gateway -- "gRPC" --> ms_event
+    api_gateway -- "gRPC" --> ms_std
     api_gateway -- "gRPC" --> ms_social
-    
+    api_gateway -- "gRPC" --> ms_storage
+
     %% --- 3. Persistance Isolée (Top-Down) ---
     ws_service -- "Transaction ACID" --> db_pg_ws
     ws_service -- "Stockage Sessions" --> db_redis_ws
-    ms_event -- "Transaction ACID" --> db_pg_event
+    ms_std -- "Transaction ACID" --> db_pg_std
     ms_social -- "Transaction ACID" --> db_pg_social
     ms_social -- "Cypher Queries" --> db_neo4j
-    
+    ms_storage -- "Transaction ACID" --> db_pg_storage
+    worker_storage -- "Lecture / scan" --> s3
+    worker_storage -- "Scan" --> clamd
+    worker_std -- "Scoring sémantique (ranking)" --> jev
+
     %% --- 4. Outbox Polling (Local) ---
     outbox_ws -. "Poll Events" .-> db_pg_ws
-    outbox_event -. "Poll Jobs | Events" .-> db_pg_event
+    outbox_std -. "Poll Jobs | Events" .-> db_pg_std
     outbox_social -. "Poll Jobs | Events" .-> db_pg_social
-    
+    outbox_storage -. "Poll Jobs | Events" .-> db_pg_storage
+
     %% --- 5. Bus de Messages Partagé (Redis) ---
-    %% Publication (Top -> Bottom)
     outbox_ws -- "Push Events" --> db_redis
-    outbox_event -- "Push Jobs | Events" --> db_redis
+    outbox_std -- "Push Jobs | Events" --> db_redis
     outbox_social -- "Push Jobs | Events" --> db_redis
-    
-    %% Consommation (Top -> Bottom)
+    outbox_storage -- "Push Jobs | Events" --> db_redis
+
     ws_service -- "Consomme Streams" --> db_redis
-    worker_event -- "Pull Jobs" --> db_redis
-    pp_event -- "Consomme Streams" --> db_redis
+    worker_std -- "Pull Jobs" --> db_redis
+    pp_std -- "Consomme Streams" --> db_redis
     worker_social -- "Pull Jobs" --> db_redis
     pp_social -- "Consomme Streams" --> db_redis
+    worker_storage -- "Pull Jobs" --> db_redis
+    pp_storage -- "Consomme Streams" --> db_redis
 ```
 
 ## Le Rôle de l'API Gateway : Gardien du Temple
@@ -137,6 +161,22 @@ La communication interne entre pods respecte une cartographie de ports stricte, 
 | **Neo4j (ms-social)** | Bolt | `7687` | Port de connexion binaire Cypher pour le graphe social. |
 | **Redis (Partagé & WS)** | Redis Protocol | `6379` | Broker Streams, files BullMQ et adaptateur Pub/Sub. |
 | **mcp-meta-indexer** | HTTP (SSE) | `3000` | Serveur MCP distant sur le cluster pour les agents IA. |
+
+### Ports de développement local
+
+En local (`ci-tools/docker-compose.yml` et fichiers `config/default.config.json`), chaque service garde un port HTTP de santé (`/health`) et un port gRPC distincts :
+
+| Service | HTTP `/health` | gRPC | PostgreSQL (docker-compose) |
+| :--- | :--- | :--- | :--- |
+| `ms-user` | `3001` | `5001` | `5432` |
+| `ms-post` | `3002` | `5002` | `5433` |
+| `ms-event` | `3003` | `5003` | `5434` |
+| `ms-social` | `3004` | `5004` | `5435` (Neo4j Bolt `7687`) |
+| `ws-service` | `3005` | non applicable (WebSocket) | `5436` (Redis dédié `6380`) |
+| `ms-storage` | `3006` | `5006` | `5437` |
+| `ms-ranking` | `3007` | `5007` | `5438` |
+
+Dans le cluster, les services gRPC sont exposés par un `Service` ClusterIP sur le port `80` (ex. `ms-ranking:80`, utilisé par `MS_RANKING_URL`) ; la matrice ci-dessus décrit la cartographie interne.
 
 ---
 

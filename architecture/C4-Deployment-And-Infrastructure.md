@@ -22,16 +22,35 @@ graph TD
     end
 
     subgraph "Persistence Layer (Databases)"
-        Argo --> PG["PostgreSQL Cluster"]
+        Argo --> PG["PostgreSQL (une base par microservice)"]
         Argo --> RD["Redis (Shared & Dedicated)"]
         Argo --> NJ["Neo4j Graph DB"]
     end
 
+    subgraph "Storage Layer (fichiers)"
+        Argo --> MIO["MinIO (S3)"]
+        Argo --> CLM["ClamAV (clamd)"]
+    end
+
+    subgraph "Observability"
+        Argo --> DD["Datadog Agent"]
+    end
+
     subgraph "Application Layer"
         Argo --> AG["API Gateway"]
-        Argo --> MS["Microservices Ecosystem (Runners, Processors)"]
+        Argo --> MS["Microservices Ecosystem (user, event, post, social, storage, ranking, ws + Runners, Processors)"]
+        Argo --> MCP["mcp-meta-indexer"]
     end
 ```
+
+## Organisation du dépôt `deploy`
+
+| Dossier | Contenu |
+| :--- | :--- |
+| `apps/base/` | Manifests de base de chaque composant : `api-gateway`, `ms-user`, `ms-event`, `ms-post`, `ms-social`, `ms-storage`, `ms-ranking`, `ws-service`, `minio`, `clamd`, `mcp-meta-indexer`. Un microservice regroupe ses Deployments : API, outbox, worker et post-processor. |
+| `apps/overlays/prod/` | Surcharges de production (Kustomize) : base PostgreSQL du service (`db-postgres/`), Sealed Secrets, ingress, et `storage-infra` pour MinIO et ClamAV. |
+| `infrastructure/` | Socle du cluster : `argocd`, `databases` (Redis, Neo4j et PostgreSQL de `ms-user`, `ms-event`, `ms-post`, `ms-social`, `ws-service` ; ceux de `ms-storage` et `ms-ranking` sont dans leur overlay `db-postgres/`), `monitoring` (agent Datadog), `namespaces`, `security` (cert-manager, Network Policies, Sealed Secrets, Traefik, quotas). |
+| `submodules/` | Sous-modules Git des dépôts applicatifs, épinglés sur le commit déployé (mis à jour par la CI, action `update-deploy` de `ci-tools`). |
 
 ## Sécurité & Conformité Zéro-Confiance
 
@@ -75,6 +94,6 @@ Cette approche garantit un démarrage propre et une auto-cicatrisation fluide en
 Pour les composants tiers complexes dont les images officielles attendent des identifiants dans des formats non standards (ex: Neo4j qui exige la syntaxe `neo4j/<password>` dans la variable `NEO4J_AUTH`), un wrapper Kustomize (script bash léger) assemble dynamiquement les variables issues des SealedSecrets avant de lancer le démon principal.
 
 ### 2. Sidecar Git-Sync pour l'Intelligence IA (`mcp-meta-indexer`)
-Le serveur `mcp-meta-indexer` s'exécute sur le cluster sans que le code source des 17 dépôts ne soit intégré dans son image Docker (principe de séparation du code et du runtime) :
+Le serveur `mcp-meta-indexer` s'exécute sur le cluster sans que le code source des dépôts applicatifs ne soit intégré dans son image Docker (principe de séparation du code et du runtime) :
 - Un conteneur sidecar `git-sync` (image officielle Kubernetes) clone en HTTPS récursif le dépôt [`deploy`](https://github.com/Volontariapp/deploy) et ses sous-modules toutes les 60 secondes vers un volume partagé `emptyDir` (`/code`).
 - Le pod `mcp-meta-indexer` lit directement ce volume en mémoire vive pour maintenir son index AST et causal à jour avec zéro latence.

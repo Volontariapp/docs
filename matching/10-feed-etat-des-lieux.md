@@ -1,5 +1,8 @@
 # 10 - Feed de posts : état des lieux
 
+> [!NOTE]
+> **Document de conception, rédigé avant l'implémentation.** Il décrit l'état du code au moment de la rédaction. Pour le statut actuel, voir le [README](README.md) de ce dossier ; en cas d'écart, le code fait foi.
+
 Extension de `ms-ranking` : en plus des événements, le service classe **les posts** pour produire un feed fondé sur ce que l'utilisateur aime, commente et suit. Ce document établit ce qui existe ; la conception est en [11](11-feed-conception.md), le plan en [12](12-feed-plan-et-risques.md).
 
 Faits vérifiés le 2026-10-11 par lecture directe du code et par une revue indépendante, puis mis à jour le 2026-10-18 (médias de `ms-post`, usage du feed existant). Chemins relatifs à la racine `meta`. Les corrections issues de la revue sont signalées par « Corrigé ».

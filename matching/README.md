@@ -3,7 +3,23 @@
 Ce dossier décrit, de bout en bout, un nouveau microservice qui calcule en arrière-plan **à quel point chaque événement correspond à chaque utilisateur** et expose un endpoint renvoyant les événements qui correspondent le mieux au profil de l'utilisateur connecté.
 
 > [!NOTE]
-> **Statut : proposition de conception, rien n'est implémenté.** Les faits sur le code existant sont vérifiés et référencés. Ce qui est à créer est signalé comme tel, et ce qui reste à confirmer est listé dans [09](09-plan-de-livraison.md). **Le nom `ms-ranking` est décidé** (2026-10-18, ADR-1) : `ms-affinity` n'était qu'un nom de travail, et `ms-rank` a été écarté parce que `nativapp` utilise déjà « rank » pour les niveaux d'impact (`nativapp/src/shared/lib/impact-ranks.ts`). Décisions de la V1 : [13](13-decisions-v1.md).
+> **Statut au 2026-10-28 : implémenté, sauf la partie `ws-service` (RK-16).** Le nom `ms-ranking` est décidé (2026-10-18, ADR-1) : `ms-affinity` n'était qu'un nom de travail, et `ms-rank` a été écarté parce que `nativapp` utilise déjà « rank » pour les niveaux d'impact (`nativapp/src/shared/lib/impact-ranks.ts`). Décisions de la V1 : [13](13-decisions-v1.md). Les documents 01 à 12 décrivent la conception et l'état du code **avant** l'implémentation ; en cas de doute sur ce qui existe, le code et les skills `volontariapp-*` font foi.
+
+## État d'avancement (vérifié dans le code le 2026-10-28)
+
+| Phase du plan ([14](14-plan-d-implementation.md)) | Statut | Où le vérifier |
+| :--- | :--- | :--- |
+| Contrats Protobuf (RK-01 à RK-03) | Fait | `proto-registry` : package `ranking` (`GetRankingEvents`, `GetRankingFeed`, `RequestRankingRefresh`, `UpdateUserLocation`, `RecordEventFeedback`) |
+| Paquets partagés (RK-04 à RK-09) | Fait | `npm-packages` : `domain-ranking`, streams `RANKING_*` et `USER_DELETED_RANKING` dans `shared`, types de jobs dans `messaging`, `domain-user` (cible `user:deleted:ranking`) |
+| Services dépendants (RK-10, RK-11) | Fait | `ms-social` (`AdminGetRecommendedEventIds`), `ms-post` (lectures par identifiants et par auteurs) |
+| Domaine `ranking` (RK-00, RK-12 à RK-15) | Fait | `ms-ranking`, `outbox-ranking`, `post-processor-ranking`, `worker-ranking` (scoring structurel et adaptateur Jev derrière `RANKING_JEV_ENABLED`) |
+| Notification et purge côté WebSocket (RK-16) | **Non réalisé** | Aucune référence au ranking trouvée dans `ws-service` ; le gather `user.deleted` n'attend pas encore `USER_RANKING_DELETED` et aucun émetteur de `RANKING_READY` n'a été trouvé dans `ws-service`, `workers-runners`, `post-processors-runner` ni `ms-ranking` |
+| API Gateway (RK-17) | Fait | `api-gateway` : `GET /ranking/events`, `GET /ranking/feed`, `POST /ranking/refresh`, `PUT /ranking/location`, `POST /ranking/events/feedback` |
+| Deploy et secrets (RK-18a, RK-18b) | Fait | `deploy` : manifests `ms-ranking`, secrets scellés |
+| Application mobile (RK-19) | Fait en grande partie | `nativapp` : écran de swipe, feed classé, repli sur la liste classique |
+| Jev (RK-21) | Fait | `worker-ranking` : adaptateur sémantique, activé par défaut en production |
+
+Les lignes RK-18c, RK-18d, RK-20, RK-20b, RK-22 et RK-23 n'ont pas été vérifiées ligne à ligne : voir le plan [14](14-plan-d-implementation.md).
 
 ## Par où commencer
 

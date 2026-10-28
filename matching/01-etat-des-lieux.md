@@ -1,5 +1,8 @@
 # 01 - État des lieux
 
+> [!NOTE]
+> **Document de conception, rédigé avant l'implémentation.** Il décrit l'état du code au moment de la rédaction. Pour le statut actuel, voir le [README](README.md) de ce dossier ; en cas d'écart, le code fait foi.
+
 Faits vérifiés dans le code le 2026-10-11 (outils mesh-mcp et lecture directe), puis revérifiés en partie le 2026-10-18 : les écarts constatés depuis (suppression de compte, médias de `ms-post`) sont corrigés dans les sections concernées et listés dans [13](13-decisions-v1.md). Chemins relatifs à la racine `meta`. Ce qui n'a **pas** pu être vérifié est dit explicitement.
 
 ## 1. Le graphe social (`ms-social`, Neo4j)
