@@ -1,7 +1,7 @@
 # Suppression de compte : événements, organisateur et participants
 
 > [!NOTE]
-> **Statut : proposition de conception, rien n'est implémenté.** Les règles de la section 3 viennent du Lead Dev. Les faits de la section 2 sont vérifiés dans le code (références `fichier:ligne`). Les points de la section 4 sont des questions ouvertes, avec une recommandation quand il y en a une.
+> **Statut : proposition de conception, rien n'est implémenté (revérifié le 2026-10-28 : `post-processor-event` appelle toujours `deleteAllByOrganizerWithEventDeleted`, aucun transfert d'organisateur trouvé dans `messaging`, `domain-event` ni `domain-social`).** La suppression de compte en deux temps elle-même (`PENDING_DELETION`, fan-out de `user.deleted`, gather) est implémentée : voir la skill `volontariapp-user-account-deletion` et [Fan-out des streams](../post-processors/01-fan-out-streams-user-deleted.md). Les règles de la section 3 viennent du Lead Dev. Les faits de la section 2 sont vérifiés dans le code (références `fichier:ligne`). Les points de la section 4 sont des questions ouvertes, avec une recommandation quand il y en a une.
 
 ---
 

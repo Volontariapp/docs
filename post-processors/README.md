@@ -10,4 +10,4 @@ Ce dossier regroupe les notes de conception et décisions ouvertes sur les post-
 
 ## Voir aussi
 
-- [C3 - Async Patterns & Flows](../C3-Async-Patterns-And-Flows.md) pour le Transactional Outbox et les Redis Streams.
+- [C3 - Async Patterns & Flows](../architecture/C3-Async-Patterns-And-Flows.md) pour le Transactional Outbox et les Redis Streams.

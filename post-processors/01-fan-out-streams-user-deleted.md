@@ -11,13 +11,13 @@
 
 1. passage du user en `PENDING_DELETION` et renseignement de `deletionRequestedAt` ;
 2. création d'un `EventQueueEntity` de type `UserEventMessagingType.USER_DELETED` (`emitter: 'ms-user'`, payload `{ id, role }`) ;
-3. insertion dans `event_queue` avec 5 `targetServices` : `Streams.USER_DELETED`, `SOCIAL_USER`, `USER_DELETED_POST`, `USER_DELETED_EVENT`, `USER_DELETED_STORAGE`.
+3. insertion dans `event_queue` avec 6 `targetServices` : `Streams.USER_DELETED`, `SOCIAL_USER`, `USER_DELETED_POST`, `USER_DELETED_EVENT`, `USER_DELETED_STORAGE`, `USER_DELETED_RANKING` (ajouté avec `ms-ranking`, relu le 2026-10-28).
 
 Si le user est déjà `PENDING_DELETION`, rien n'est écrit : pas de second événement.
 
 ### Relais vers Redis
 
-`npm-packages/packages/outbox/src/pushers/event-queue.pusher.ts:73-101` boucle sur `targetServices` et fait un `XADD` du même message dans chaque stream (`getEventStreamName(targetService)`), dans un seul pipeline, avec `MAXLEN ~ 10000`. Un événement produit donc **5 copies**, une par stream.
+`npm-packages/packages/outbox/src/pushers/event-queue.pusher.ts:73-101` boucle sur `targetServices` et fait un `XADD` du même message dans chaque stream (`getEventStreamName(targetService)`), dans un seul pipeline, avec `MAXLEN ~ 10000`. Un événement produit donc **6 copies**, une par stream.
 
 ### Consommation
 
@@ -27,13 +27,16 @@ Si le user est déjà `PENDING_DELETION`, rien n'est écrit : pas de second év�
 | `user:deleted:event` | `post-processor-event/.../user-deleted.post-processor.ts` | non relevé |
 | `social:user` | `post-processor-social/.../users/user-deleted.post-processor.ts` | non relevé |
 | `user:deleted:storage` | `post-processor-storage/.../user-deleted.post-processor.ts` | non relevé |
+| `user:deleted:ranking` | `post-processor-ranking/.../users/` (groupe `RankingUserDeletedPostProcessors`) | `RankingUserDeletedPostProcessors` |
 | `user:deleted` | `ws-service/.../ws-user-deleted.options.ts` | non relevé |
 
 Chaque post-processor étend `BatchPostProcessor`, filtre via `shouldProcess` sur `USER_DELETED`, purge son domaine, puis écrit un événement `USER_<DOMAINE>_DELETED` (ou `_DELETION_FAILED` après passage en DLQ) dans son propre `event_queue`, ciblé sur `Streams.WS_USER_DELETED_FEEDBACK`. `ws-service` agrège ces retours (Scatter-Gather).
 
+Le gather de `ws-service` (`config/default.config.json`, trigger `user.deleted`) n'attend aujourd'hui que `USER_SOCIAL_DELETED`, `USER_POST_DELETED`, `USER_EVENT_DELETED` et `USER_STORAGE_DELETED` : le retour du domaine ranking n'y est pas encore compté (ticket RK-16 non réalisé).
+
 ## 2. Constat : un stream pour un consommateur
 
-Chaque stream n'a qu'un consommateur. Le consumer group n'apporte donc rien de plus qu'une file 1:1. Le 1:N est **émulé côté producteur** (5 `XADD`) au lieu d'être délégué à Redis (1 `XADD`, N groupes). AGENTS.md section 4 décrit pourtant les événements comme des Redis Streams 1:N écoutés par les post-processors.
+Chaque stream n'a qu'un consommateur. Le consumer group n'apporte donc rien de plus qu'une file 1:1. Le 1:N est **émulé côté producteur** (6 `XADD`) au lieu d'être délégué à Redis (1 `XADD`, N groupes). AGENTS.md section 4 décrit pourtant les événements comme des Redis Streams 1:N écoutés par les post-processors.
 
 Incohérences de nommage relevées : `user:deleted:post`, `user:deleted:event` et `user:deleted:storage` suivent un schéma, `social:user` est un stream générique (il porte probablement d'autres événements user, à vérifier), `user:deleted` est consommé par `ws-service`.
 

@@ -58,7 +58,7 @@ flowchart LR
 | contrats gRPC | `proto-registry/proto/volontariapp/ranking/` | `ranking.{proto,command,query,responses,services}.proto` | dossier `social/` |
 | manifestes | `deploy/apps/base/ms-ranking/`, `deploy/infrastructure/databases/ms-ranking/` | Déploiements, service, base | `ms-social` |
 
-Le partage de code reste **vertical** : `ms-ranking`, `worker-ranking` et `post-processor-ranking` importent `domain-ranking`, conformément à `docs/Monorepo-Structure.md`. **`outbox-ranking` n'en a pas besoin** (`outbox-runners/outbox-social/package.json` ne dépend pas de `domain-social`) : il n'utilise que les paquets techniques (`outbox`, `database`, `messaging`). Aucun autre domaine n'importe `domain-ranking`.
+Le partage de code reste **vertical** : `ms-ranking`, `worker-ranking` et `post-processor-ranking` importent `domain-ranking`, conformément à `docs/architecture/Monorepo-Structure.md`. **`outbox-ranking` n'en a pas besoin** (`outbox-runners/outbox-social/package.json` ne dépend pas de `domain-social`) : il n'utilise que les paquets techniques (`outbox`, `database`, `messaging`). Aucun autre domaine n'importe `domain-ranking`.
 
 Détail de dépôts (vérifié) : `outbox-runners/`, `workers-runners/` et `post-processors-runner/` sont **chacun un seul dépôt git** (avec `.gitmodules`, `.github/workflows/ci.yml` et un `command.sh` qui détecte dynamiquement `outbox-*`, `worker-*`, `post-processor-*`). `outbox-ranking`, `worker-ranking` et `post-processor-ranking` sont donc de **nouveaux dossiers dans des dépôts existants**. Seul `ms-ranking` est un nouveau dépôt.
 

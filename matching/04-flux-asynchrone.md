@@ -1,6 +1,6 @@
 # 04 - Flux asynchrone
 
-Ce document suit le cycle standard de la plateforme (voir [C3](../C3-Async-Patterns-And-Flows.md) et la skill `volontariapp-implement-async-job-flow`) : post-processor, outbox, queue BullMQ, worker, `job_audit`, puis événement de fin. **Aucun appel Redis direct** pour créer un job : toujours une ligne `jobs_outbox` via `JobsOutboxEntity.createJob` et `JobsOutboxRepository`, avec `emitter: 'ms-ranking'` partout.
+Ce document suit le cycle standard de la plateforme (voir [C3](../architecture/C3-Async-Patterns-And-Flows.md) et la skill `volontariapp-implement-async-job-flow`) : post-processor, outbox, queue BullMQ, worker, `job_audit`, puis événement de fin. **Aucun appel Redis direct** pour créer un job : toujours une ligne `jobs_outbox` via `JobsOutboxEntity.createJob` et `JobsOutboxRepository`, avec `emitter: 'ms-ranking'` partout.
 
 ## 1. Événements en amont, job au milieu, événement en aval
 

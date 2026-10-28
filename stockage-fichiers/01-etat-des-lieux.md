@@ -1,5 +1,8 @@
 # 01 - État des lieux
 
+> [!NOTE]
+> **Document de conception, rédigé avant l'implémentation.** Il décrit l'état du code au moment de la rédaction. Pour le statut actuel, voir le [README](README.md) de ce dossier ; en cas d'écart, le code fait foi.
+
 Photographie du code au 2026-10-05, avant implémentation de l'architecture cible. Chaque affirmation a été vérifiée dans le code (chemin indiqué).
 
 ## 1. Ce qui existe
@@ -108,6 +111,6 @@ Vérifiés avec `analyze_impact` (mesh-mcp) :
 
 ## 4. Documentation et bug connexes
 
-La table d'événements s'appelle **`event_queue`** et la fonction de trigger **`notify_job_audit_status_change`** (statuts `COMPLETED` / `FAILED`, événements `<domaine>:job:outbox:success|failure`). `docs/C3-Async-Patterns-And-Flows.md` et les skills `implement-async-job-flow`, `implement-async-event-flow`, `trace-async-flow` ont été corrigés en ce sens.
+La table d'événements s'appelle **`event_queue`** et la fonction de trigger **`notify_job_audit_status_change`** (statuts `COMPLETED` / `FAILED`, événements `<domaine>:job:outbox:success|failure`). `docs/architecture/C3-Async-Patterns-And-Flows.md` et les skills `implement-async-job-flow`, `implement-async-event-flow`, `trace-async-flow` ont été corrigés en ce sens.
 
 **Bug connu, hors périmètre storage** : `JobOutboxFailedPostProcessor` (`npm-packages/packages/post-processors/src/common/job-outbox-failed.post-processor.ts`) n'accepte que les types `job.outbox.failed` ou `*:job:outbox:failed`, alors que le trigger émet `*:job:outbox:failure`. Les échecs de jobs ne sont jamais traités et aucun feedback d'échec n'est émis. Même filtre corrigé, son `UPDATE ... WHERE status = PENDING` ne toucherait rien : la ligne `jobs_outbox` est déjà `COMPLETED` depuis le push BullMQ (`outbox.consumer.ts`). Voir [11-scenarios-de-panne.md](11-scenarios-de-panne.md), problème P4.

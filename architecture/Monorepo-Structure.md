@@ -6,7 +6,7 @@ La solution retenue est le **Monorepo central** hébergé dans le dépôt [**npm
 
 ## La Mutualisation par "Domaine"
 
-Dans le diagramme de l'Image 4, le composant `DOMAIN_NPM` est classé dans la zone **PARTAGER (Shared)** de l'infrastructure. 
+Dans le diagramme [C2](C2-Containers.md), le composant `domain_npm` est classé dans le périmètre **Partagé** de l'infrastructure. 
 Il contient des packages métier (ex: `@volontariapp/domain-event`) qui encapsulent toute l'intelligence fonctionnelle.
 
 ### Qu'est-ce qu'un "Domain Package" ?
@@ -30,21 +30,41 @@ Ce dépôt contient également tous les utilitaires transverses du framework de 
 ```text
 npm-packages/
 ├── packages/
-│   ├── auth/              # Logique d'authentification (Tokens, Hachage)
-│   ├── bridge/            # Couche d'accès DB optimisée
-│   ├── config/            # Système de configuration centralisé (Env vars)
-│   ├── contracts/         # Typages partagés et définitions de files BullMQ
-│   ├── database/          # Utilitaires PostgreSQL / Neo4j
+│   │  # Domaines (un par microservice métier)
+│   ├── domain-user/       # Intelligence fonctionnelle du domaine User (badges, score d'impact, suppression de compte)
 │   ├── domain-event/      # Intelligence fonctionnelle du domaine Event
-│   ├── domain-social/     # Intelligence fonctionnelle du domaine Social
-│   ├── domain-user/       # Intelligence fonctionnelle du domaine User
-│   ├── errors/            # Registre centralisé des erreurs (Codes HTTP/gRPC)
-│   ├── logger/            # Wrapper Winston pour la centralisation des logs
-│   ├── messaging/         # Classes pour BullMQ / Redis Streams
-│   ├── outbox/            # Le cœur du pattern Transactional Outbox (Polling, Retry)
-│   ├── post-processors/   # Mécanismes de Circuit Breaker et DLQ
-│   ├── shared/            # Utilitaires globaux (Dates, Arrays, Utils)
-│   └── workers/           # Classes de base pour les Background Jobs (Audit)
+│   ├── domain-post/       # Intelligence fonctionnelle du domaine Post (posts, commentaires, médias)
+│   ├── domain-social/     # Intelligence fonctionnelle du domaine Social (graphe Neo4j)
+│   ├── domain-storage/    # Fichiers : entités, cycle de vie, règles de rattachement, repository PostgreSQL
+│   ├── domain-ranking/    # Classement : modèles, repositories, services de scoring purs
+│   │  # Contrats et messagerie
+│   ├── contracts/         # Contrats gRPC et DTO web générés / partagés (compatibles front)
+│   ├── contracts-nest/    # Intégration NestJS des contrats gRPC
+│   ├── messaging/         # Types de jobs (BullMQ) et d'événements (Redis Streams)
+│   ├── shared/            # Enums partagés (dont `Streams`), utilitaires globaux
+│   │  # Framework interne des microservices
+│   ├── outbox/            # Cœur du pattern Transactional Outbox (polling, retry)
+│   ├── workers/           # Classes de base BullMQ (BaseWorker, audit des jobs)
+│   ├── post-processors/   # Classes de base des consommateurs de Redis Streams (circuit breaker, DLQ)
+│   ├── database/          # Entités et modèles communs (outbox, audit), utilitaires PostgreSQL / Neo4j
+│   ├── bridge/            # Fournisseurs de connexion aux bases
+│   ├── bridge-nest/       # Intégration NestJS de bridge (TypeORM)
+│   ├── config/            # Système de configuration centralisé (Env vars)
+│   ├── errors/            # Registre centralisé des erreurs (codes HTTP / gRPC)
+│   ├── errors-nest/       # Filtres d'exceptions NestJS
+│   ├── validation-nest/   # Utilitaires de validation NestJS
+│   ├── health-check/      # Vérification de santé des connexions
+│   ├── health-check-nest/ # Wrapper NestJS de health-check
+│   ├── logger/            # Logger partagé, masquage des données personnelles, corrélation de traces
+│   ├── monitoring/        # Observabilité (OpenTelemetry)
+│   ├── auth/              # Authentification (tokens, token interne)
+│   ├── crypto/            # Chiffrement, hachage, génération de jetons
+│   │  # Stockage de fichiers
+│   ├── storage-client/    # Client gRPC NestJS vers ms-storage (ConfirmFileAttachment)
+│   ├── storage-pipeline/  # Client S3, signature POST, magic bytes, scanner clamd, transformation d'images
+│   │  # Outillage
+│   ├── eslint-config/     # Configuration ESLint partagée (flat config)
+│   └── testing/           # Utilitaires de test
 └── ci-tools/              # Sous-module Git pour le outillage CI/CD et l'infra locale
 ```
 
