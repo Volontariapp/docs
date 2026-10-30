@@ -1,6 +1,6 @@
 # 05 - Modèle de données et check-in
 
-Propositions de modèle. Rien n'existe encore, voir [01](01-etat-des-lieux.md).
+Modèle de données tel qu'implémenté dans les PR ouvertes (voir [07](07-contrats-et-impacts-par-repo.md)). L'état avant ces PR est décrit dans [01](01-etat-des-lieux.md).
 
 ## 1. Inscription : ordre et présence (ms-social, Neo4j)
 
@@ -23,9 +23,9 @@ Règles :
 
 | Aspect | Décision |
 | :--- | :--- |
-| Qui | Le créateur (organizerId) ou un admin, comme pour le changement d'état (`event.service.ts:180-226`, exploré). |
+| Qui | Le créateur (organizerId) ou un admin. Le contrôle vit dans `ms-social` (`EventOrganizerPolicy`, `ms-social` PR #55). La recherche du créateur parcourt aujourd'hui les événements créés par l'utilisateur ; une méthode directe `isEventCreator` de `domain-social` est livrée par la PR `npm-packages` du correctif de plafond. |
 | Quand | À partir de `IN_PROGRESS`, jusqu'au passage à `FINISHED`. |
-| Verrouillage | À `FINISHED`, plus aucune modification : `N` et les rangs deviennent définitifs. |
+| Verrouillage | Cible : à `FINISHED`, plus aucune modification, `N` et les rangs deviennent définitifs. **Non appliqué dans `ms-social`**, qui n'a pas d'état d'événement : le verrou reste à placer dans `ms-event` ou à porter par un état d'événement dans `ms-social` (point ouvert, [10](10-plan-de-livraison-et-risques.md)). |
 | Opération | Un RPC par lot : `SetEventAttendance(eventId, userIds[] cochés, userIds[] décochés)`, idempotent. |
 | Contrôle | On ne peut cocher que des utilisateurs ayant une arête `PARTICIPATE`. |
 
@@ -35,14 +35,16 @@ Règles :
 
 | Colonne | Type | Rôle |
 | :--- | :--- | :--- |
-| `role` | `text` : `PARTICIPANT` ou `ORGANIZER` | Distingue la prime du créateur. Nullable pour l'historique. |
+| `role` | `varchar(20)` : `PARTICIPANT` ou `ORGANIZER` | Distingue la prime du créateur. Nullable pour l'historique. |
 | `rank` | `int` nullable | Rang d'inscription parmi les présents. Vide pour le créateur. |
 | `formula_version` | `int` nullable | Version de formule appliquée. Vide pour l'historique. |
 | `event_pool` | `int` nullable | `P` de l'événement, pour auditer la somme. |
 
+Les quatre colonnes sont nullables, comme dans la migration de `ms-user` PR #76.
+
 La clé `(event_id, user_id)` reste valable : un utilisateur ne reçoit qu'un crédit par événement (créateur ou participant, jamais les deux, voir [03](03-formule.md)).
 
-Index à prévoir pour les classements périodiques ([09](09-leaderboard.md)) : `(created_at, user_id)`.
+Index prévu pour les classements périodiques ([09](09-leaderboard.md)) : `(created_at, user_id)`. Il n'est pas créé par la PR #76 et reste pour la tranche S7.
 
 ## 4. Événement (ms-event)
 

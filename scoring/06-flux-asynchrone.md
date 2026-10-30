@@ -46,7 +46,7 @@ sequenceDiagram
 | :--- | :--- |
 | Rejeu de `event.finished` | Le registre ignore les couples déjà crédités. Mêmes calcul, mêmes montants, aucun doublon. |
 | Crash au milieu de la boucle | Les crédits faits sont durables, le message est relivré, la boucle reprend sur les manquants. |
-| Check-in modifié entre deux rejeux | Impossible : verrouillé à `FINISHED`. Les présents lus sont donc stables. |
+| Check-in modifié entre deux rejeux | Doit être impossible : verrouillé à `FINISHED`. Le verrou n'est pas encore appliqué dans `ms-social` (point ouvert, [05](05-modele-de-donnees-et-checkin.md)). |
 | Poison pill | DLQ, voir `volontariapp-async-remediation`. |
 
 > [!IMPORTANT]

@@ -11,7 +11,7 @@ Chemins sous `nativapp/src`. Marqués "exploré" : non relus ce jour.
 | `api/event/event.schema.ts` (exploré) | Retirer `awardedImpactScore` du schéma de création. Garder `maxParticipants` en `min(1)`. |
 | `api/event/hooks/use-create-event.ts` (exploré) | Ne plus envoyer le score. |
 
-**Estimation avant l'événement** : l'encart appelle la fonction pure `computeEventScoring` (importée de `@volontariapp/shared`) avec la durée choisie et la capacité, et un `N` supposé égal à `beta` pour afficher le maximum. Libellé honnête : "jusqu'à", car `N` réel dépend des présents.
+**Estimation avant l'événement** : l'encart appelle la fonction pure `computeEventScoring` (importée de `@volontariapp/shared`) avec la durée choisie et la capacité, et un `N` supposé égal à `beta` pour afficher le maximum. Libellé honnête : "jusqu'à", car `N` réel dépend des présents. Le champ de score manuel du formulaire est supprimé. La modale rappelle que la prime du créateur n'est versée qu'à partir de 3 présents.
 
 ## 2. Écran de check-in
 
@@ -34,14 +34,16 @@ Chemins sous `nativapp/src`. Marqués "exploré" : non relus ce jour.
 
 `shared/lib/impact-ranks.ts` est calibré sur 100 points par événement (commentaire de calibrage, exploré). Avec la formule les gains typiques sont de 100 à 800 points par événement (voir [04](04-exemples-et-simulations.md)).
 
-Seuils actuels : 100, 300, 700, 1 500, 3 000, 5 500, 9 000, 15 000, 25 000.
+Seuils d'origine : 100, 300, 700, 1 500, 3 000, 5 500, 9 000, 15 000, 25 000.
+
+Seuils retenus comme point de départ (x3) : 300, 900, 2 100, 4 500, 9 000, 16 500, 27 000, 45 000, 75 000.
 
 | Option | Effet |
 | :--- | :--- |
 | Ne rien changer | Un utilisateur franchit un rang par événement : l'échelle perd son sens. |
-| Multiplier les seuils par un facteur (point de départ proposé : x3, car le gain moyen d'un événement courant est de 200 à 500) | L'échelle garde environ le même nombre d'événements par rang qu'avant. |
+| Multiplier les seuils par un facteur (point de départ retenu : x3, car le gain moyen d'un événement courant est de 200 à 500) | L'échelle garde environ le même nombre d'événements par rang qu'avant. |
 
-Le facteur définitif se choisit avec une simulation "X événements par mois pendant Y mois donne le rang Z" une fois l'exposant tranché. Les utilisateurs existants gardent leur total (aucun backfill) et peuvent donc redescendre d'un rang après le recalibrage. À assumer ou à compenser par un seuil de transition.
+Le facteur définitif est à confirmer par une simulation "X événements par mois pendant Y mois donne le rang Z", maintenant que la formule est stable, dans une PR `nativapp` ultérieure. Les utilisateurs existants gardent leur total (aucun backfill) et peuvent donc redescendre d'un rang après le recalibrage. À assumer ou à compenser par un seuil de transition.
 
 ## 5. Tests
 

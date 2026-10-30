@@ -23,8 +23,8 @@ Volontariapp vit de la création et de la participation aux événements. Aujour
 | :--- | :--- |
 | Le total d'un événement est connu avant de se répartir | Le prize pool `P` ne dépend pas du rang. Les rangs ne font que le répartir : un bonus pour le premier se paie par un retrait aux suivants. |
 | La présence fait foi | Seuls les présents comptent (anti-farming de l'inscription). |
-| Bonus décroissant lent | Poids `w_i = i^-0,3` : décroissance douce, mais l'écart du premier grossit avec `N` (voir [04](04-exemples-et-simulations.md)). |
-| Le créateur ne s'auto-récompense pas | Il ne saisit plus de points et sa prime vient de la formule. |
+| Bonus décroissant lent et borné | Poids `w_i = i^-0,3` : décroissance douce, avec chaque part plafonnée à +100 % de la moyenne pour éviter que l'écart du premier grossisse avec `N` (voir [04](04-exemples-et-simulations.md)). |
+| Le créateur ne s'auto-récompense pas | Il ne saisit plus de points et sa prime vient de la formule, versée à partir de 3 présents. |
 | Reproductibilité | Une version de formule (`formula_version`) est stockée avec chaque crédit : changer la formule ne réécrit pas l'historique. |
 | Pas de rétroactivité | Les événements déjà terminés gardent leurs points actuels. |
 
