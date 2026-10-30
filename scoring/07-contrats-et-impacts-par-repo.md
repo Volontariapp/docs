@@ -5,6 +5,29 @@
 
 Les chemins marqués "exploré" n'ont pas été relus ce jour : à revérifier avec `mesh-mcp` (`analyze_grpc`, `analyze_impact`, `find_dependents`) avant de coder.
 
+## 0. État des PR au 2026-10-30
+
+Branche `feat/scoring-event-points` partout, sauf indication contraire.
+
+| Dépôt | PR | État |
+| :--- | :--- | :--- |
+| `proto-registry` | #37 | mergée |
+| `npm-packages` | #277 | mergée (`shared` 0.18.0) |
+| `ms-user` | #76 | ouverte |
+| `ms-social` | #55 | ouverte |
+| `ms-event` | #78 | ouverte |
+| `workers-runners` | #50 | ouverte |
+| `post-processors-runner` | #55 | ouverte |
+| `api-gateway` | #85 | ouverte |
+| `nativapp` | #87 | ouverte |
+
+Points d'attention :
+
+- Le DTO de création de `ms-event` envoie encore `awardedImpactScore = 0`, car le contrat `CreateEventCommand` exige le champ. Le retirer demande un changement de `proto-registry`, donc la règle du STOP.
+- `api-gateway` ne vérifie pas l'organisateur et s'appuie sur `ms-social`. La PR `ms-social` #55 doit être mergée avant ou avec `api-gateway` #85.
+- La méthode `isEventCreator` de `domain-social` est livrée par une PR `npm-packages` distincte (correctif de plafond et de création directe). Elle suit la règle du STOP avant d'être consommée.
+- Le verrouillage du check-in à `FINISHED` n'est pas appliqué dans `ms-social` (pas d'état d'événement). Point ouvert dans [10](10-plan-de-livraison-et-risques.md).
+
 ## 1. Vague 1 : `proto-registry`
 
 | Changement | Fichier |
@@ -34,11 +57,11 @@ Pour chaque package : `yarn build`, `yarn test`, `yarn changeset add`, `yarn cha
 
 | Dépôt | Changement |
 | :--- | :--- |
-| `ms-social` | Contrôleur et handler `SetEventAttendance` et lecture des présents (CQRS, voir `volontariapp-grpc-microservice`). Contrôle : l'appelant est l'organisateur. |
+| `ms-social` | Contrôleur et handler `SetEventAttendance` et lecture des présents (CQRS, voir `volontariapp-grpc-microservice`). Contrôle : l'appelant est l'organisateur ou un admin (`EventOrganizerPolicy`, PR #55). Le verrou à `FINISHED` n'y est pas appliqué. |
 | `ms-event` | DTO de création sans score. Marquer `scoring_version`. Vérifier l'application de la capacité à l'inscription (point non vérifié, [01](01-etat-des-lieux.md)). |
 | `ms-user` | Migration "Expand" du registre de crédits (`volontariapp-db-migration`) : colonnes nullables, aucun backfill, puis `yarn meta sync-migrations`. |
 | `post-processors-runner/post-processor-user` | `ImpactScoreCrediter` : lire les présents, appeler `computeEventScoring`, créditer participants et créateur, brancher l'ancien chemin pour les événements sans `scoring_version`. Mettre à jour `EventFinishedImpactScorePostProcessor` et son client social. |
-| `api-gateway` | Route de check-in ; retirer le score du DTO de création ; exposer l'estimation si elle n'est pas calculée côté client (`volontariapp-api-gateway`). |
+| `api-gateway` | Route de check-in (sans contrôle de l'organisateur, délégué à `ms-social`) ; retirer le score du DTO de création ; exposer l'estimation si elle n'est pas calculée côté client (`volontariapp-api-gateway`). |
 | `ws-service` | Aucun changement obligatoire. À vérifier avec `analyze_impact` sur `user.impact_score_credited`. |
 | `nativapp` | Voir [08](08-impacts-nativapp.md). |
 | `deploy` | Aucun a priori : pas de nouveau déployable. |
