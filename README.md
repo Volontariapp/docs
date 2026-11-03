@@ -28,6 +28,7 @@ docs/
 3. **[C3 - Async Patterns & Flows](architecture/C3-Async-Patterns-And-Flows.md)** : le cœur du réacteur. Transactional Outbox, cycle de vie des jobs, trigger SQL `job_audit`, Scatter-Gather du WebSocket, et les flux concrets construits dessus.
 4. **[C4 - Deployment & Infrastructure](architecture/C4-Deployment-And-Infrastructure.md)** : la vision GitOps. Kubernetes (K3s), ArgoCD, Sealed Secrets, Network Policies, organisation du dépôt `deploy`.
 5. **[Structure Monorepo & NPM](architecture/Monorepo-Structure.md)** : les packages `@volontariapp/*`, le partage vertical par domaine, le cycle de publication et la règle du STOP.
+6. **[ADR : Convention de pagination](architecture/ADR-Pagination.md)** : page et limite, ordre stable, plafond 100 avec écrêtage, exception legacy, lectures par lot, curseur réservé à `ms-ranking`.
 
 ## Fonctionnalités
 
