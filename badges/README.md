@@ -6,6 +6,7 @@ Ce dossier décrit comment les 13 badges de Volontariapp sont débloqués automa
 > **Statut : Entièrement implémenté (13/13 badges déployés et validés).**
 > - Badges création et interactions : `EVENT_HOST_COUNT_1` ([03](03-evenement-event-creation-successfull.md)), `COMMUNITY_POST_COUNT_1` ([04](04-evenement-post-creation-successfull.md)), `SOCIAL_LIKE_COUNT_10` ([05](05-evenement-post-liked.md)), et `EVENT_WISHLIST_COUNT_10` ([06](06-evenement-event-social-wished.md)).
 > - Badges participation : les 9 badges de participation terminés ([07](07-evenement-event-finished.md)).
+> - Points et progression : chaque badge rapporte des points (barème x10) et l'avancement vers chaque badge est consultable, voir [11](11-points-et-progression.md).
 
 ## Principe en une phrase
 
@@ -25,21 +26,21 @@ Un microservice émet un événement via l'outbox. Le post-processor `pp-user` l
 
 La source de vérité visuelle est `nativapp/src/components/dataDisplay/badge/badge.config.ts`. Le seed backend est `ms-user/src/migrations/domain/1780000000001-SeedDefaultBadges.ts`. Les slugs sont identiques.
 
-| Statut | Slug | Nom | Condition | Événement déclencheur | Document |
-| :---: | :--- | :--- | :--- | :--- | :--- |
-| [x] | `EVENT_HOST_COUNT_1` | Bâtisseur·se | Créer 1 événement | `event.creation_successfull` | [03](03-evenement-event-creation-successfull.md) |
-| [x] | `COMMUNITY_POST_COUNT_1` | Première Plume | Poster 1 post | `post.creation_successfull` | [04](04-evenement-post-creation-successfull.md) |
-| [x] | `SOCIAL_LIKE_COUNT_10` | Soutien du cœur | Liker 10 posts | `post.liked` | [05](05-evenement-post-liked.md) |
-| [x] | `EVENT_WISHLIST_COUNT_10` | Curieux·se | Wishlist 10 événements | `event_social.wished` | [06](06-evenement-event-social-wished.md) |
-| [x] | `EVENT_PARTICIPATION_TIER_1` | Premier Pas | 1 événement | `event.finished` | [07](07-evenement-event-finished.md) |
-| [x] | `EVENT_PARTICIPATION_TIER_2` | Engagé·e | 5 événements | `event.finished` | [07](07-evenement-event-finished.md) |
-| [x] | `EVENT_PARTICIPATION_TIER_3` | Pilier | 10 événements | `event.finished` | [07](07-evenement-event-finished.md) |
-| [x] | `EVENT_PARTICIPATION_TIER_4` | Figure locale | 20 événements | `event.finished` | [07](07-evenement-event-finished.md) |
-| [x] | `EVENT_SOCIAL_TIER_1` | Cœur Solidaire | 1 événement socio | `event.finished` | [07](07-evenement-event-finished.md) |
-| [x] | `EVENT_SOCIAL_TIER_2` | Tisseur·se de liens | 5 événements socio | `event.finished` | [07](07-evenement-event-finished.md) |
-| [x] | `EVENT_ECOLOGY_TIER_1` | Graine d'écolo | 1 événement éco | `event.finished` | [07](07-evenement-event-finished.md) |
-| [x] | `EVENT_ECOLOGY_TIER_2` | Main Verte | 5 événements éco | `event.finished` | [07](07-evenement-event-finished.md) |
-| [x] | `EVENT_HYBRID_ECO_SOCIAL_TIER_1` | Éco-Solidaire | 5 éco et 5 socio | `event.finished` | [07](07-evenement-event-finished.md) |
+| Statut | Slug | Nom | Condition | Événement déclencheur | Document | Points |
+| :---: | :--- | :--- | :--- | :--- | :--- | ---: |
+| [x] | `EVENT_HOST_COUNT_1` | Bâtisseur·se | Créer 1 événement | `event.creation_successfull` | [03](03-evenement-event-creation-successfull.md) | 200 |
+| [x] | `COMMUNITY_POST_COUNT_1` | Première Plume | Poster 1 post | `post.creation_successfull` | [04](04-evenement-post-creation-successfull.md) | 100 |
+| [x] | `SOCIAL_LIKE_COUNT_10` | Soutien du cœur | Liker 10 posts | `post.liked` | [05](05-evenement-post-liked.md) | 100 |
+| [x] | `EVENT_WISHLIST_COUNT_10` | Curieux·se | Wishlist 10 événements | `event_social.wished` | [06](06-evenement-event-social-wished.md) | 100 |
+| [x] | `EVENT_PARTICIPATION_TIER_1` | Premier Pas | 1 événement | `event.finished` | [07](07-evenement-event-finished.md) | 100 |
+| [x] | `EVENT_PARTICIPATION_TIER_2` | Engagé·e | 5 événements | `event.finished` | [07](07-evenement-event-finished.md) | 250 |
+| [x] | `EVENT_PARTICIPATION_TIER_3` | Pilier | 10 événements | `event.finished` | [07](07-evenement-event-finished.md) | 500 |
+| [x] | `EVENT_PARTICIPATION_TIER_4` | Figure locale | 20 événements | `event.finished` | [07](07-evenement-event-finished.md) | 1000 |
+| [x] | `EVENT_SOCIAL_TIER_1` | Cœur Solidaire | 1 événement socio | `event.finished` | [07](07-evenement-event-finished.md) | 150 |
+| [x] | `EVENT_SOCIAL_TIER_2` | Tisseur·se de liens | 5 événements socio | `event.finished` | [07](07-evenement-event-finished.md) | 400 |
+| [x] | `EVENT_ECOLOGY_TIER_1` | Graine d'écolo | 1 événement éco | `event.finished` | [07](07-evenement-event-finished.md) | 150 |
+| [x] | `EVENT_ECOLOGY_TIER_2` | Main Verte | 5 événements éco | `event.finished` | [07](07-evenement-event-finished.md) | 400 |
+| [x] | `EVENT_HYBRID_ECO_SOCIAL_TIER_1` | Éco-Solidaire | 5 éco et 5 socio | `event.finished` | [07](07-evenement-event-finished.md) | 600 |
 
 ## Navigation
 
@@ -55,3 +56,4 @@ La source de vérité visuelle est `nativapp/src/components/dataDisplay/badge/ba
 | 08 | [`user.badge_awarded`](08-evenement-user-badge-awarded.md) | Push WebSocket et comportement de `nativapp`. |
 | 09 | [Contrats et plan](09-contrats-et-plan.md) | Contrats à créer, règle du STOP, vagues, points ouverts. |
 | 10 | [Guide technique `pp-user`](10-guide-technique-pp-user.md) | Faits vérifiés pour implémenter : token interne, client gRPC, pagination, écriture de badges, outbox, pièges. À lire avant de coder. |
+| 11 | [Points et progression](11-points-et-progression.md) | Points par badge, compteurs dédupliqués, route de progression, mise en production et rattrapage. |
