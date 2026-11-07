@@ -2,14 +2,14 @@
 
 ## 1. Vérifications
 
-Relecture du 2026-11-07 : huit points réglés par lecture, deux restent à essayer (V3, V4 en partie).
+Relecture du 2026-11-07 : huit points réglés par lecture, deux restent à essayer (V3, V4 en partie). Mise à jour après livraison (2026-11-07) : V4 fait au curl, appareil à faire ; V3 à faire après déploiement.
 
 | # | Point | Résultat | Conséquence |
 | :--- | :--- | :--- | :--- |
 | V1 | Que devient un événement si le **géocodage échoue** ? | **Réglé par lecture.** `location` est nullable (`domain-event/src/models/event.model.ts:38-44`) ; le géocodage est asynchrone dans `worker-event` (`app.module.ts:92-95`) ; un échec passe la saga en `FAILED`. **Inférence** : invisible par `ST_DWithin`, y compris juste après la création | Le seed attend le géocodage ; un événement sans coordonnées est hors du direct (accepté) |
 | V2 | Le **formulaire de création** accepte-t-il un début maintenant ou dans le passé ? | **Réglé.** Oui à partir d'aujourd'hui 00:00 (`nativapp/src/api/event/event.schema.ts:26-35`) ; le back exige seulement début avant fin (`event.service.ts:81`) | Le seed n'est pas la seule source de démonstration |
-| V3 | Les messages **entrants** traversent-ils le proxy de la gateway ? | **Non fait** (essai requis). À la lecture, le proxy fait l'upgrade puis tunnelise (`ws-proxy.middleware.ts:93-144`) | À essayer avant LE-11a : `socket.io-client` par la gateway, émission, observation côté `ws-service`. Si non, modifier le proxy |
-| V4 | OSRM piéton : `table`, `geometries=geojson`, `User-Agent` | **En partie.** `table` et `route` en GeoJSON fonctionnent (curl, [01](01-etat-des-lieux.md) section 8). Envoi du `User-Agent` par React Native **non testé** | À tester sur appareil dans LE-03a. Sans `User-Agent` : risque de blocage par l'hôte |
+| V3 | Les messages **entrants** traversent-ils le proxy de la gateway ? | **À faire après déploiement** (essai requis). À la lecture, le proxy fait l'upgrade puis tunnelise (`ws-proxy.middleware.ts:93-144`) ; `ws-service` #54 et `api-gateway` #111 sont fusionnées mais pas déployées | À essayer avant LE-11a : `socket.io-client` par la gateway, émission, observation côté `ws-service`. Si non, modifier le proxy |
+| V4 | OSRM piéton : `table`, `geometries=geojson`, `User-Agent` | **Curl fait, appareil à faire.** `table` et `route` en GeoJSON fonctionnent (curl, [01](01-etat-des-lieux.md) section 8). Envoi du `User-Agent` par React Native **non testé** sur appareil (écran livré par nativapp #112) | À tester sur appareil. Sans `User-Agent` : risque de blocage par l'hôte |
 | V5 | `@volontariapp/logger` masque-t-il `latitude` et `longitude` ? | **Réglé : non** (`logger/src/masking.ts:4-22`) | `masking.keys` dans `ws-service/src/main.ts` (LE-08a) ; jamais de coordonnée interpolée |
 | V6 | Contrôleur HTTP dans `ws-service`, sortie vers Redis | **Réglé.** Aucun contrôleur, serveur Express présent (`main.ts`) ; sortie Redis autorisée (`ws-service.yaml:66-81`) | Ajouter un contrôleur (LE-08a) ; aucun lot `deploy` |
 | V7 | Sérialisation de `statuses` et `area` dans `GET /events` | **Réglé par précédent** : Explore envoie déjà ces paramètres par `params` axios (`explore-search.utils.ts:26-37`), la gateway convertit les statuts (`search-events.request.dto.ts:50-56`) | Même chemin ; non testé de bout en bout avec les nouveaux paramètres |
@@ -45,6 +45,7 @@ curl -s -A "volontariapp-demo/0.1" "https://routing.openstreetmap.de/routed-foot
 | R15 | Partage qui survit à l'expiration du jeton d'accès, à un blocage ou à une suppression de compte | Faible | Borné par le TTL de l'autorisation ; limite connue |
 | R16 | Point fantôme chez l'organisateur (app du participant tuée) | Faible | Purge côté client après 120 s ([03](03-nativapp.md) section 8) |
 | R17 | Démo périmée : les événements seedés finissent 3 h après le seed | Moyenne | Relancer le seed avant chaque démo ; durée configurable |
+| R18 | Copies multiples de `@volontariapp/database` après un bump de `domain-*` : TypeORM échoue (`No metadata for EventQueueModel`, `No mapping registered from JobsOutboxEntity`) et toute écriture renvoie 500 (rencontré sur `ms-event` #91) | Élevée | Vérifier `yarn.lock` (une seule copie de `database`) ; aligner `database`, `shared` et `outbox` sur les versions du domaine ; lire l'artefact `e2e-diagnostics` de la CI (journaux des services) |
 | R9 | `isEventLive` compte un événement `IN_PROGRESS` dont la fin est dépassée (organisateur qui oublie de terminer) | Faible | Garde `endAt > maintenant` dans la règle de sélection |
 | R10 | Un événement démarré par l'organisateur **avant** son heure de début est écarté par `startDateTo = maintenant` | Faible | Limite connue, acceptée |
 | R11 | Un événement sans date de fin paraît finir maintenant (`formatTimestamp`) | Faible | Écarté du direct : acceptable pour la démo |
