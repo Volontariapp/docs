@@ -33,18 +33,21 @@ Les chemins suivent les conventions existantes (`src/api/event/hooks/use-*.ts`, 
 | Créer | `src/api/event/hooks/use-nearest-live-events.ts` | Orchestration : position, recherche, filtre, durées, séparation |
 | Créer | `src/screens/event/LiveEventScreen.tsx` et `src/screens/event/hooks/use-live-event-screen.ts` | Écran commun et sa logique |
 | Créer | `src/components/event/live/` : `LiveCandidateCard.tsx`, `LiveFullEventsSection.tsx`, `LiveMyEventSection.tsx`, `LiveRouteMap.tsx` | Composants de l'écran |
+| Créer | `src/api/event/hooks/use-has-live-participation.ts` | `hasLiveParticipation` : participations **et** événements organisés (D20) en direct selon D1 ; lu depuis le cache React Query de ManageHub (`use-get-participated-events`, `use-get-my-events`), requête lancée seulement quand la modale s'ouvre, jamais au montage de l'app |
 | Modifier | `src/navigation/components/QuickActionsModal.tsx` | Props `onSelectLive` et `hasLiveParticipation` ; troisième action |
-| Modifier | `src/navigation/MainAppNavigator.tsx` | Handler `navigation.navigate('LiveEvent')` ; calcul de `hasLiveParticipation` |
-| Modifier | `src/navigation/stacks/MainStack.tsx` | Route `LiveEvent: undefined` dans `MainStackParamList` et dans le navigateur |
+| Modifier | `src/navigation/MainAppNavigator.tsx` | Handler `navigation.navigate('LiveEvent')` ; passe `hasLiveParticipation` (hook ci-dessus) |
+| Modifier | `src/navigation/stacks/MainStack.tsx` | Route `LiveEvent: undefined` dans `MainStackParamList` et dans le navigateur ; ajouter la portée (`ParticipatedScope`) aux paramètres de `MainTabs` pour le bouton "Mes évts" (aujourd'hui seul `initialTab`, `:17-19`) |
 | Modifier | `src/screens/index.ts` | Export de `LiveEventScreen` |
+| Modifier (tests existants) | `src/navigation/components/__tests__/QuickActionsModal.test.tsx`, `src/navigation/__tests__/MainAppNavigator.test.tsx` | Les nouvelles props obligatoires les cassent : à mettre à jour dans le même lot |
 | Palier 4 | `src/hooks/use-live-sharing.ts`, `src/hooks/use-live-organizer-positions.ts`, `src/api/live/live.api.ts` | Partage de position et carte de l'organisateur |
+| Palier 4, modifier | `src/context/NotificationContext.tsx` (accès au socket, réabonnement après reconnexion), `src/screens/event/EventManagementScreen.tsx` et `src/components/event/EventParticipantsTab.tsx` (carte de l'organisateur), `app.json` (texte de permission, lignes 37-40) | Branchements du palier 4 |
 
 ## 3. Types et constantes
 
 ```ts
 // src/api/event/live-events.utils.ts
 export const LIVE_SEARCH_RADIUS_M = 2000;
-export const LIVE_SEARCH_LIMIT = 30; // maximum accepté par la gateway : 100
+export const LIVE_SEARCH_LIMIT = 30; // la gateway écrête au-delà de 100 (ADR-Pagination section 3)
 export const LIVE_START_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 export const LIVE_MIN_USEFUL_PRESENCE_MS = 15 * 60 * 1000; // décision Q5
 export const LIVE_MAX_WALK_S = 30 * 60; // décision Q4
@@ -52,6 +55,14 @@ export const LIVE_MAX_JOINABLE = 3;
 export const LIVE_MAX_FULL_SHOWN = 2; // décision Q6
 export const LIVE_MAX_ROUTING_CANDIDATES = 8;
 export const WALKING_SPEED_MPS = 1.25; // repli, mesuré le 2026-11-07
+// palier 4
+export const LIVE_ARRIVAL_RADIUS_M = 50; // calculé par le client sur sa position brute (D17)
+export const LIVE_POSITION_STALE_MS = 120 * 1000; // l'organisateur retire un point plus vieux
+
+/** D19 : une capacité <= 0 signifie sans limite. */
+export function isEventFull(event: Pick<AppEvent, 'maxParticipants' | 'currentParticipants'>): boolean {
+  return event.maxParticipants > 0 && event.currentParticipants >= event.maxParticipants;
+}
 
 export type LiveCandidateAvailability = 'JOINABLE' | 'FULL';
 
@@ -113,20 +124,24 @@ Route : `GET /events`, via `eventApi.getEvents` et `useGetEvents` (le hook exist
 | `onlyAvailable` | `false` | il n'accepte que `PUBLISHED` et ne filtre pas la capacité |
 | `excludeBlockedUsers` | `true` | sécurité : événements des utilisateurs bloqués masqués |
 | `excludeParticipatedByMe`, `excludeCreatedByMe` | `true` | ces événements sont dans "Mon événement" |
-| `page`, `limit` | `1`, `30` | maximum gateway : 100 |
+| `page`, `limit` | `1`, `30` | la gateway écrête au-delà de 100 |
+
+Sérialisation : passer l'objet tel quel dans `params` (axios), comme Explore (`explore-search.utils.ts:26-37`) ; `statuses` contient les valeurs numériques de l'enum. La gateway ignore un paramètre inconnu (`ValidationPipe` sans `whitelist`, `api-gateway/src/main.ts:71`) : envoyer `endAtFrom` avant le déploiement de LE-07 est sans effet, pas une erreur.
 
 **Limite connue :** avec `startDateTo = maintenant`, un événement que l'organisateur a démarré **avant** son heure de début n'est pas trouvé. Rare ; accepté.
+
+**Horloge :** `maintenant` vient du téléphone. Un téléphone décalé décale la fenêtre ; accepté. Les fonctions pures reçoivent `now` en paramètre (testable).
 
 ## 5. Règle de sélection
 
 Pure, testée, dans `live-events.utils.ts`.
 
-1. Garder `isEventLive(event, now)` **et** `endAt > now` (garde-fou : `isEventLive` compte aussi un `IN_PROGRESS` dont la fin est dépassée) **et** `location` définie.
+1. Garder `isEventLive(event, now)` **et** `endAt > now` (garde-fou : `isEventLive` compte aussi un `IN_PROGRESS` dont la fin est dépassée) **et** un état différent de `CANCELLED` et `FINISHED` (`isEventLive` ne regarde pas l'état dans la plage horaire) **et** `location` définie. Exporter cette règle (`isEventJoinableLive`) : `use-has-live-participation` l'utilise aussi.
 2. Trier par distance à vol d'oiseau croissante, garder `LIVE_MAX_ROUTING_CANDIDATES`.
 3. Obtenir les durées de marche d'OSRM (une requête pour tous les candidats). En cas d'échec : `distance / WALKING_SPEED_MPS`, `isEstimated = true`.
 4. Écarter si `walkSeconds > LIVE_MAX_WALK_S`.
 5. Écarter si `endAt - now < walkSeconds * 1000 + LIVE_MIN_USEFUL_PRESENCE_MS`.
-6. `availability = FULL` si `currentParticipants >= maxParticipants`, sinon `JOINABLE`.
+6. `availability = FULL` si `isEventFull(event)` (D19 : `maxParticipants > 0` et `currentParticipants >= maxParticipants`), sinon `JOINABLE`.
 7. Trier chaque groupe par `walkSeconds`, tronquer à `LIVE_MAX_JOINABLE` et `LIVE_MAX_FULL_SHOWN`.
 
 ## 6. Écrans
@@ -149,7 +164,7 @@ Bouton central : actions rapides
 +------------------------------------------+
 ```
 
-Si `hasLiveParticipation` : titre "Mon événement en direct", sous-titre "Voir le trajet, le temps restant". La carte est ancrée en bas : l'ajout d'une ligne ne déplace pas le bouton.
+Si `hasLiveParticipation` (participation **ou** organisation d'un événement en direct, D20) : titre "Mon événement en direct", sous-titre "Voir le trajet, le temps restant". La carte est ancrée en bas : l'ajout d'une ligne ne déplace pas le bouton (à vérifier sur la mise en page actuelle de `QuickActionsModal`). Pour un organisateur, la section "Mon événement" montre son événement sans bouton "Trajet" ni bascule de partage.
 
 ```text
 Écran LiveEvent (racine de MainStack, plein écran, sans barre d'onglets)
@@ -181,9 +196,9 @@ Les noms et chiffres sont fictifs. Réutilisations : `isEventLive` et `getEventS
 | Point | Valeur |
 | :--- | :--- |
 | Hôte | `https://routing.openstreetmap.de/routed-foot` (jamais `router.project-osrm.org` : il calcule en voiture) |
-| Coordonnées | ordre **longitude,latitude** dans l'URL |
-| Durées | un appel au service `table` avec la source et toutes les destinations (**à tester**, [06](06-risques-et-verifications.md) V4) ; repli : un appel `route` par candidat, espacés |
-| Tracé | un appel `route` avec `overview=full&geometries=geojson` (**à tester**) pour le seul candidat choisi |
+| Coordonnées | ordre **longitude,latitude** dans l'URL **et dans la géométrie GeoJSON renvoyée** : convertir chaque `[lng, lat]` en `{ latitude, longitude }` pour `<Polyline>` (test dédié) |
+| Durées | un appel au service `table` avec `sources=0&annotations=duration` (vérifié par curl le 2026-11-07 : `durations [[0, 1005.5, 2381.2]]`) ; une durée `null` signifie destination non routable ; repli : un appel `route` par candidat, espacés |
+| Tracé | un appel `route` avec `overview=full&geometries=geojson` (vérifié par curl : `LineString` de 118 points) pour le seul candidat choisi |
 | Cadence | une requête à la fois, 1,1 s au minimum entre deux requêtes (limite publique : 1 par seconde) |
 | En-tête | `User-Agent` identifiant l'application (exigé par la politique d'usage ; **à vérifier** que React Native l'envoie tel quel) |
 | Cache | 60 s par couple (origine arrondie à 4 décimales, destination) |
@@ -195,21 +210,28 @@ Côté personne qui partage :
 
 - bascule "Partager ma position avec l'organisateur" sur la carte de l'événement suivi, **désactivée par défaut**, avec le texte de consentement : "Partager ma position avec l'organisateur jusqu'à mon arrivée. Position approximative (environ 100 m), visible de l'organisateur seul, jamais conservée." ;
 - activation : `PUT /live/events/:eventId/sharing` puis, en cas de succès, `Location.watchPositionAsync` avec un intervalle de 30 s (Q7) ;
-- chaque position est **arrondie à 3 décimales** (environ 111 m en latitude) avant envoi, puis émise par `socket.emit('live.position', { eventId, latitude, longitude })` ;
-- arrêt automatique : réception de `live.sharing_stopped`, passage de l'app en arrière-plan (`AppState`), départ de l'événement, fin de l'événement, démontage de l'écran. L'arrêt appelle `DELETE /live/events/:eventId/sharing` ;
-- permission **foreground uniquement** (déjà utilisée) : aucune permission d'arrière-plan.
+- **arrivée détectée par le client** (D17) : à chaque lecture, la distance entre la position **brute** et l'événement est calculée localement ; à `LIVE_ARRIVAL_RADIUS_M` ou moins, le client arrête le partage avec la raison `ARRIVED`. La position brute n'est jamais envoyée ni journalisée ;
+- sinon la position est **arrondie à 3 décimales** (environ 111 m en latitude, 73 m en longitude à Paris) avant envoi, puis émise par `socket.emit('live.position', { eventId, latitude, longitude })` sur le socket obtenu par `socketService.getSocket()` (le service n'a pas d'`emit`) ;
+- arrêt automatique : arrivée, réception de `live.sharing_stopped`, passage de l'app en arrière-plan (`AppState`), départ de l'événement, fin de l'événement, retrait de la permission (échec de `watchPositionAsync`), démontage de l'écran. L'arrêt appelle `DELETE /live/events/:eventId/sharing?reason=<ARRIVED|STOPPED|LEFT>` ; au retour au premier plan, l'utilisateur réactive lui-même le partage ;
+- reconnexion du socket (rafraîchissement du jeton après `connect_error`) : les hooks du partage se réabonnent au nouveau socket ;
+- un seul appareil connecté à la fois (`ws-service` ferme l'ancien socket) : le partage d'un autre appareil s'arrête ; l'interface l'indique ;
+- permission **foreground uniquement** (déjà utilisée) : aucune permission d'arrière-plan. Réécrire le texte de `app.json:37-40` pour mentionner le partage avec l'organisateur ; retirer `locationAlwaysAndWhenInUsePermission` si `app.config.js` ne le réutilise pas (à vérifier dans le lot) ;
+- aucun `console.log` ni journal contenant une position (le dépôt journalise souvent des payloads, par exemple `event.api.ts:113`).
 
-Côté organisateur : dans `EventManagementScreen` (onglet participants), une carte affiche les positions reçues via `live.positions_updated` quand l'événement est en direct. La carte démarre vide et se remplit à chaque mise à jour (au plus 30 s de délai pour le premier point).
+Côté organisateur : dans `EventManagementScreen` (onglet participants, `EventParticipantsTab`), une carte affiche les positions reçues via `live.positions_updated` quand l'événement est en direct. La carte démarre vide et se remplit à chaque mise à jour (au plus 30 s de délai pour le premier point). **Un point plus vieux que `LIVE_POSITION_STALE_MS` est retiré** (app tuée, réseau coupé) ; `live.sharing_stopped` retire le point aussitôt.
 
 Branchement : un hook dédié (`use-live-organizer-positions`) enregistre ses handlers sur le socket. Ne pas agrandir `useNotificationHandlers.ts` (fichier déjà très long, un seul gros effet).
 
 ## 9. Tests
 
-- `live-events.utils.test.ts` : chaque étape de la règle de sélection, cas limites (`endAt` manquant, `IN_PROGRESS` expiré, complet exactement à la capacité, aucun candidat, tous écartés par la marche).
-- `routing.service.test.ts` : parsing de la réponse OSRM, file d'attente et cadence, cache, repli sur erreur réseau et sur code OSRM différent de `Ok`.
+- `live-events.utils.test.ts` : chaque étape de la règle de sélection, cas limites (`endAt` manquant, `IN_PROGRESS` expiré, `CANCELLED` et `FINISHED` dans la plage horaire, complet exactement à la capacité, capacité 0, aucun candidat, tous écartés par la marche). `now` injecté.
+- `routing.service.test.ts` : parsing de la réponse OSRM, conversion `[lng, lat]`, durée `null`, file d'attente et cadence, cache, repli sur erreur réseau et sur code OSRM différent de `Ok`.
 - `use-nearest-live-events.test.tsx` : états du hook avec React Query de test, annulation au démontage.
+- `use-has-live-participation.test.tsx` : participation en direct, organisation en direct, événement annulé dans la plage, aucune requête tant que la modale est fermée.
 - `LiveEventScreen` : un test par état de `LiveScreenStatus`.
-- `QuickActionsModal` : libellé selon `hasLiveParticipation`, appel de `onSelectLive`.
+- `QuickActionsModal` : libellé selon `hasLiveParticipation`, appel de `onSelectLive` ; mettre à jour `QuickActionsModal.test.tsx` et `MainAppNavigator.test.tsx` existants.
+- Palier 4 : arrivée locale (aucun envoi sous le rayon), arrondi, arrêt sur arrière-plan et sur retrait de permission, réabonnement après reconnexion, purge des points périmés chez l'organisateur.
+- Mocks dans `*.mock.ts` (`expo-location`, socket, `react-native-maps` si `jest.setup.js` ne le simule pas déjà : à vérifier, c'est le premier `Polyline` du dépôt).
 - Pas de test E2E en local : pousser et lire le job CI `e2e`.
 
 ## 10. Critères d'acceptation
@@ -220,3 +242,4 @@ Branchement : un hook dédié (`use-live-organizer-positions`) enregistre ses ha
 - OSRM coupé : la liste s'affiche avec la mention "estimé".
 - Permission refusée : message, aucune requête envoyée.
 - Participer met à jour le compteur et fait apparaître l'événement dans "Mon événement".
+- Un événement annulé ou terminé dans sa plage horaire n'apparaît nulle part dans le direct.
