@@ -3,11 +3,11 @@
 Ce dossier décrit une nouvelle fonction de `nativapp` : depuis le bouton central de l'application, proposer à l'utilisateur de **rejoindre un événement qui est en cours autour de lui**, avec le trajet à pied et le temps de marche, puis (palier ultérieur) partager sa position avec l'organisateur pour ne pas se perdre en chemin.
 
 > [!NOTE]
-> **Statut au 2026-11-07 : conception validée par Victor, rien n'est implémenté.** Les décisions sont dans [02](02-decisions.md). Les constats viennent de la lecture du code le 2026-11-07 ; chaque constat porte son chemin (et sa ligne quand elle a été lue). Ce qui n'a pas été vérifié est listé dans [06](06-risques-et-verifications.md). En cas de doute sur ce qui existe, le code et les skills `volontariapp-*` font foi.
+> **Statut au 2026-11-07 : conception validée par Victor, relue le 2026-11-07 (corrections intégrées), rien n'est implémenté.** Les décisions sont dans [02](02-decisions.md). Les constats viennent de la lecture du code le 2026-11-07 ; chaque constat porte son chemin (et sa ligne quand elle a été lue). Ce qui reste non vérifié est listé dans [06](06-risques-et-verifications.md). En cas de doute sur ce qui existe, le code et les skills `volontariapp-*` font foi.
 
 > [!WARNING]
 > **Deux faits changent la nature du chantier.**
-> 1. **Rien ne démarre un événement automatiquement.** `IN_PROGRESS` n'est posé que par l'organisateur (ou un admin) via `changeState`. La règle "en direct" doit donc s'appuyer sur les dates, pas sur l'état seul ([01](01-etat-des-lieux.md) section 4).
+> 1. **Rien ne démarre un événement automatiquement.** `IN_PROGRESS` n'est posé que par l'organisateur (ou un admin) via `changeState` ; le seul job qui change un état est le repli `withFallback` qui rejoue ce même `changeState` quand `ms-event` est indisponible (`workers-runners/worker-event/src/workers/handlers/fallback/fallback-change-event-state.handler.ts:36-37`). La règle "en direct" doit donc s'appuyer sur les dates, pas sur l'état seul ([01](01-etat-des-lieux.md) section 4).
 > 2. **Les données de démo ne contiennent aucun événement en cours** : le seed crée des événements passés ou à au moins un jour d'ici ([01](01-etat-des-lieux.md) section 7). Le lot LE-04 en ajoute.
 
 ## Par où commencer
@@ -34,7 +34,7 @@ Ce dossier décrit une nouvelle fonction de `nativapp` : depuis le bouton centra
 | P4 | Partage de position vers l'organisateur (version réduite) | `npm-packages` (`messaging`), `ws-service`, `api-gateway`, `nativapp` | Types WebSocket, pas de proto |
 | P5 | Hors périmètre : rappel de fin, démarrer un direct, capacité côté serveur, audience "amis" | à décider | à décider |
 
-**La démo P1 + P2 ne demande aucun changement de contrat ni de service** : elle est utilisable après les lots LE-02, LE-03 et LE-04.
+**La démo P1 + P2 ne demande aucun changement de contrat ni de service** : elle est utilisable après les lots LE-02, LE-03a, LE-03b et LE-04.
 
 ## Navigation
 
@@ -51,9 +51,11 @@ Ce dossier décrit une nouvelle fonction de `nativapp` : depuis le bouton centra
 
 | # | Décision | Alternative écartée | Raison principale |
 | :--- | :--- | :--- | :--- |
-| ADR-1 | Filtrer "en direct" sur les dates côté client (`isEventLive` existant plus `fin > maintenant`) | Filtrer sur `IN_PROGRESS` seul | Aucun job ne démarre un événement ([01](01-etat-des-lieux.md) section 4) |
+| ADR-1 | Filtrer "en direct" sur les dates côté client (`isEventLive` existant, plus `fin > maintenant`, état différent de `CANCELLED` et `FINISHED`) | Filtrer sur `IN_PROGRESS` seul | Aucune transition automatique ne démarre un événement ([01](01-etat-des-lieux.md) section 4) |
 | ADR-2 | Trajet par OSRM piéton appelé depuis l'app | OpenRouteService, lien profond vers Plans ou Google Maps | Sans clé ni secret, tracé dans l'app, front non déployé (démo). `router.project-osrm.org` ignore le profil piéton |
 | ADR-3 | Un seul cycle de contrats : 1 PR `proto-registry`, 2 PR `npm-packages` (une automatique, une manuelle) | Un cycle par fonction | Chaque cycle impose le STOP, la publication et le déverrouillage |
 | ADR-4 | Autorisation du partage écrite dans Redis par `ws-service`, sur appel interne de la gateway | La gateway écrit Redis directement (option B initiale) | La `NetworkPolicy` de la gateway n'autorise pas Redis en production ([04](04-contrats-et-backend.md) section 9) |
 | ADR-5 | Audience du partage : l'organisateur seul, via la room utilisateur existante | Rooms par événement dès la V1 | Une seule personne reçoit : `notifyUser` suffit. Les rooms par événement servent quand l'audience s'élargit (P5) |
 | ADR-6 | Pas de partage de position entre inconnus | Carte publique des participants | Risque de suivi d'une personne ; donnée personnelle (`AGENTS.md` section 6) |
+| ADR-7 | Arrivée détectée par le client sur sa position brute (jamais envoyée), repli serveur à 150 m | Arrivée à 50 m calculée par `ws-service` | Le serveur ne reçoit qu'une position arrondie (cellule d'environ 110 m sur 73 m à Paris) : un seuil de 50 m peut ne jamais se déclencher |
+| ADR-8 | Endpoint interne de `ws-service` protégé par le jeton interne **lié** à l'utilisateur concerné (`token.id === userId`), sur un chemin hors `/socket.io` | Jeton interne valide seul | `signInternal` signe une identité utilisateur, et ces jetons circulent dans toutes les métadonnées gRPC ([04](04-contrats-et-backend.md) section 7) |

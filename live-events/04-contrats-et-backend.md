@@ -42,7 +42,9 @@ Compatibilité : ajout d'un champ optionnel avec un numéro neuf, donc compatibl
 | A | automatique (CI de `proto-registry`) | Régénération `contracts`, `contracts-nest` | `contracts`, `contracts-nest` |
 | B | manuelle | voir ci-dessous | `contracts`, `domain-event`, `messaging` |
 
-**Ordre : A d'abord, B ensuite**, rebasée sur A après sa fusion : les deux modifient `@volontariapp/contracts`, donc deux bumps concurrents sinon. Une seule branche, un seul changeset pour B (`yarn changeset add` puis `yarn changeset version`, une fois par branche : la CI vérifie que `CHANGELOG.md` contient la version de `package.json`).
+**Ordre de fusion : A d'abord, B ensuite**, rebasée sur A après sa fusion : les deux modifient `@volontariapp/contracts`, donc deux bumps concurrents sinon. A est un bump `patch` de `contracts` et `contracts-nest` produit par le robot (`ci-tools/.github/actions/create-bump-pr/action.yml:41-69`) ; ajouter B sur la branche du robot est impossible (`changeset version` y a déjà tourné).
+
+**Développement en parallèle** : B se code pendant LE-01, dans sa propre session (D21). `yarn changeset add` tôt ; **`yarn changeset version` seulement après le rebase sur A fusionnée**, une seule fois (la CI vérifie que `CHANGELOG.md` contient la version de `package.json`). Le champ de `SearchEventsWebQuery` est dans `src/gateway/`, que la CI de `proto-registry` ne touche jamais : aucun conflit de fichier avec A, seulement de version.
 
 Contenu de B (skill `volontariapp-shared-npm-package-change`) :
 
@@ -63,7 +65,7 @@ Après la publication par la CI : levée du verrou (`AGENTS.md` section 1, condi
 ## 4. `ms-event` et `api-gateway` : `endAtFrom`
 
 - `ms-event` : `SearchEventsQueryDTO` (`ms-event/src/modules/event/dto/request/query/search-events.query.dto.ts`) reçoit `endAtFrom` avec les mêmes validateurs que `startDateFrom` ; le contrôleur (`event.query.controller.ts`, à côté de la ligne 98) convertit en `Date` et le passe au `SearchAdvancedVO`. Tests : contrôleur et DTO.
-- `api-gateway` : `SearchEventsRequestDTO` reçoit `endAtFrom` (mêmes décorateurs que `startDateFrom`, ligne 45) et `toQuery()` le transmet (ligne 100). Tests du DTO. Skill : `volontariapp-api-gateway`.
+- `api-gateway` : `SearchEventsRequestDTO` reçoit `endAtFrom` avec `@ApiProperty({ example: '2023-01-01T00:00:00Z', required: false })`, **`@IsOptional()` et `@IsISO8601()`** (`startDateFrom`, ligne 45, n'a aucun validateur : ne pas copier ce manque), et `toQuery()` le transmet (à côté de la ligne 100). Tests du DTO : valeur valide transmise, valeur invalide refusée en 400, absente inchangée. Skill : `volontariapp-api-gateway`.
 
 ## 5. `messaging` : types WebSocket du direct (palier 4)
 
@@ -85,9 +87,10 @@ export enum LiveClientMessageType {
 ```ts
 // websockets/live/payload.ts
 export type LiveSharingStopReason =
-  | 'ARRIVED'
+  | 'ARRIVED' // détectée par le client (D17), ou repli serveur à 150 m
+  | 'STOPPED' // arrêt volontaire, arrière-plan, démontage, permission retirée
   | 'EVENT_ENDED'
-  | 'LEFT'
+  | 'LEFT' // l'utilisateur quitte l'événement (unparticipate)
   | 'REVOKED'
   | 'EXPIRED';
 
@@ -125,7 +128,14 @@ export interface ILiveGrantRequest {
   organizerId: string;
   eventLatitude: number;
   eventLongitude: number;
-  expiresAt: string; // ISO 8601, fin de l'événement plus 15 min, plafonné à 8 h
+  expiresAt: string; // ISO 8601, fin de l'événement plus 15 min, plafonné à 8 h (revérifié par ws-service)
+}
+
+/** Gateway vers ws-service, corps du DELETE interne. */
+export interface ILiveRevokeRequest {
+  eventId: string;
+  userId: string;
+  reason: Extract<LiveSharingStopReason, 'ARRIVED' | 'STOPPED' | 'LEFT'>;
 }
 ```
 
@@ -135,7 +145,15 @@ Registre : ajouter les deux entrées serveur vers client à `WebsocketEventRegis
 
 ### 6.1 Seed d'événements en cours (palier 1, LE-04)
 
-Le seed tire aujourd'hui des événements passés ou futurs (`event-seed.service.ts:94-106`). Ajouter un petit nombre d'événements **en cours** : `startAt = maintenant moins une durée tirée entre 10 et 60 min`, `endAt = maintenant plus une durée tirée entre 60 et 180 min`, adresse prise dans la liste existante. Ils ne passent pas à `IN_PROGRESS` : ils restent `PUBLISHED`, ce qui correspond au comportement réel de la plateforme. Le point d'entrée du seed (`system-seed.service.ts`) et son paramétrage n'ont pas été lus : à lire avant d'écrire le lot. Prévoir un nombre configurable, et zéro par défaut hors démo.
+Le seed tire aujourd'hui des événements passés ou futurs (`event-seed.service.ts:95-106`). Ajouter un petit nombre d'événements **en cours**, avec l'horloge injectée (testable) :
+
+| Profil | `startAt` | `endAt` | Usage dans la démo ([06](06-risques-et-verifications.md) section 4) |
+| :--- | :--- | :--- | :--- |
+| Normal (N-2 événements) | maintenant moins 10 à 60 min | maintenant plus une durée configurable, 180 min par défaut | Candidats joignables |
+| Fin proche (1) | maintenant moins 30 min | maintenant plus 15 à 20 min | Doit être écarté (marche plus 15 min) |
+| Complet (1) | maintenant moins 30 min | comme "Normal" | Rempli par des participations seedées jusqu'à `maxParticipants` |
+
+Adresses prises dans la liste existante, regroupées dans un même quartier pour tenir dans 2 km. Ils restent `PUBLISHED` (état à la création, `event.transformer.ts:54`), ce qui correspond au comportement réel. Le géocodage est asynchrone (`worker-event`) : le seed attend que chaque événement ait une `location` avant de rendre la main, ou le documente. La démo est **périmée à la fin de la durée choisie** : relancer le seed avant chaque démo. Le point d'entrée (`system-seed.service.ts`) et son paramétrage n'ont pas été lus : à lire avant d'écrire le lot. Nombre configurable, zéro par défaut hors démo. Le formulaire de l'app permet aussi de créer un événement en cours ([01](01-etat-des-lieux.md) section 1).
 
 ### 6.2 Autorisation du partage (palier 4, LE-09)
 
@@ -146,39 +164,48 @@ DELETE /live/events/:eventId/sharing   -> 204
 
 Contrôles du `PUT`, dans cet ordre :
 
-1. Charger l'événement (`getEvent` gRPC, avec les métadonnées internes).
+1. Charger l'événement (`getEvent` gRPC, avec les métadonnées internes). `organizerId`, coordonnées et dates viennent **de cet événement**, jamais de la requête du client.
 2. Refuser si l'état est `CANCELLED` ou `FINISHED`, ou si `maintenant` est hors de [`startAt` moins 30 min, `endAt`].
 3. Refuser si l'appelant est l'organisateur (400 : personne à qui montrer sa position).
-4. Vérifier que l'appelant participe : parcourir `GetEventParticipants` avec l'utilitaire existant `fetchAllPages` (`api-gateway/src/common/pagination/fetch-all-pages.helper.ts`). Il n'existe pas de RPC booléen ([01](01-etat-des-lieux.md) section 3) ; pour des événements de quelques dizaines de personnes, une page suffit. Si l'échelle l'exige un jour, ajouter un RPC `IsEventParticipant` (cycle de contrats supplémentaire, hors périmètre).
-5. Appeler `ws-service` : `PUT {msWsUrl}/internal/live/grants` avec le corps `ILiveGrantRequest` et l'en-tête `x-internal-token` produit par `JwtService.signInternal` (même mécanique que `ws-proxy.middleware.ts:122-125`). `expiresAt = min(endAt + 15 min, maintenant + 8 h)`.
+4. Vérifier que l'appelant participe : parcourir **ses propres participations** (`getUserParticipateEvent` avec `fetchAllPages`, le motif de `event-social-filter.service.ts:105-110`) et chercher `eventId`. Il n'existe pas de RPC booléen ([01](01-etat-des-lieux.md) section 3). Si l'échelle l'exige un jour, ajouter un RPC `IsEventParticipant` (cycle de contrats supplémentaire, hors périmètre).
+5. Appeler `ws-service` : `PUT {msWsUrl}/internal/live/grants` avec le corps `ILiveGrantRequest` et l'en-tête `x-internal-token` signé **pour l'appelant** (`JwtService.signInternal({ id, role })`, même mécanique que `ws-proxy.middleware.ts:122-125`) : `ws-service` exige `token.id === userId` (D18). `expiresAt = min(endAt + 15 min, maintenant + 8 h)`.
 
-`DELETE` : appelle `DELETE {msWsUrl}/internal/live/grants/:eventId/:userId`. Journaliser **sans coordonnées**.
+Un événement introuvable et un événement non autorisé renvoient la même réponse (même code, même message) pour ne pas révéler l'existence d'un `eventId`. Codes d'erreur : réutiliser ceux de `@volontariapp/errors-nest` ; si un code nouveau est nécessaire, il entre dans la PR B (`npm-packages`), sinon c'est un bump de plus.
+
+`DELETE /live/events/:eventId/sharing?reason=ARRIVED|STOPPED|LEFT` (défaut `STOPPED`) : appelle `DELETE {msWsUrl}/internal/live/grants/:eventId/:userId` avec la raison et le même jeton lié à l'appelant. Journaliser **sans coordonnées**.
+
+Fichiers : nouveau module `live` (contrôleur, service, client HTTP vers `msWsUrl`, DTO Swagger), déclaré dans le module racine. Le client HTTP de la gateway (`@nestjs/axios` ou autre) est à vérifier dans `api-gateway/package.json` avant d'écrire le lot.
 
 ### 6.3 Contrôle de capacité (optionnel, LE-12, décision Q3)
 
-Dans `participateSelf` (`participation.command-controller.ts:28`), avant l'appel gRPC : lire l'événement et le compteur enrichi, répondre 409 si `currentParticipants >= maxParticipants`. Une course entre deux demandes simultanées reste possible : seul un contrôle dans `ms-social` serait strict, et il demande que `ms-social` connaisse la capacité (hors périmètre).
+Dans `participateSelf` (`participation.command-controller.ts:28`), avant l'appel gRPC : lire l'événement et le compteur enrichi, répondre 409 si `maxParticipants > 0` et `currentParticipants >= maxParticipants` (D19). Une course entre deux demandes simultanées reste possible : seul un contrôle dans `ms-social` serait strict, et il demande que `ms-social` connaisse la capacité (hors périmètre).
 
 ## 7. `ws-service` (palier 4, LE-08)
 
-Nouveau module `live` dans `ws-service/src/`.
+Nouveau module `live` dans `ws-service/src/` (`LiveModule`, déclaré dans `app.module.ts`), avec son propre `LiveGateway` socket.io plutôt qu'un ajout dans `AppGateway`. Le worktree part de `origin/main` (le checkout local de `ws-service` peut être sur une branche de fonction).
 
-**Endpoint interne** (nouveau contrôleur HTTP, protégé par un garde qui vérifie `x-internal-token` avec `JwtService.verifyInternal`, déjà utilisé à `app.gateway.ts:55`) :
+**Endpoint interne** (nouveau contrôleur HTTP sous `/internal/live`, jamais sous `/socket.io`), protégé par un garde (D18) qui :
+1. vérifie `x-internal-token` avec `JwtService.verifyInternal` (déjà utilisé à `app.gateway.ts:55`) ;
+2. exige `token.id === userId` (corps du `PUT`, chemin du `DELETE`) : un jeton interne valide seul ne suffit pas, il porte une identité utilisateur et 21 sources peuvent joindre `ws-service` ;
+3. refuse un `expiresAt` passé ou au-delà de maintenant plus 8 h.
 
 | Méthode | Chemin | Effet |
 | :--- | :--- | :--- |
 | `PUT` | `/internal/live/grants` | Écrit `live:grant:{eventId}:{userId}` (valeur : organisateur, coordonnées de l'événement, expiration ; TTL jusqu'à `expiresAt`) |
-| `DELETE` | `/internal/live/grants/:eventId/:userId` | Supprime l'autorisation et la dernière position ; notifie `live.sharing_stopped` raison `LEFT` |
+| `DELETE` | `/internal/live/grants/:eventId/:userId` | Supprime l'autorisation et la dernière position ; notifie `live.sharing_stopped` avec la raison reçue (`ARRIVED`, `STOPPED` ou `LEFT`) à l'organisateur |
 
-**Handler entrant** : `@SubscribeMessage('live.position')` dans le gateway socket.io (aujourd'hui `AppGateway` n'a que des hooks de connexion).
+**Handler entrant** : `@SubscribeMessage('live.position')` dans `LiveGateway`.
 
 ```text
-reçoit { eventId, latitude, longitude } ; userId = client.data.userId (posé à la connexion)
+reçoit { eventId, latitude, longitude } ; userId = client.data.userId
+0. userId absent (message reçu avant la fin de handleConnection) -> ignorer ; fin
+   payload invalide (types, bornes) -> ignorer ; fin
 1. autorisation = GET live:grant:{eventId}:{userId}
    absente  -> notifyUser(userId, live.sharing_stopped, REVOKED) ; fin
 2. cadence : si la dernière mise à jour date de moins de 10 s -> ignorer
 3. arrondir latitude et longitude à 3 décimales
 4. SET live:pos:{eventId}:{userId} (valeur arrondie, TTL 120 s)
-5. si distance(position, événement) <= 50 m
+5. repli d'arrivée (D17) : si distance(position arrondie, événement) <= 150 m
      -> supprimer autorisation et position
      -> notifyUser(userId, live.sharing_stopped, ARRIVED)
      -> notifyUser(organizerId, live.sharing_stopped, ARRIVED)
@@ -186,11 +213,13 @@ reçoit { eventId, latitude, longitude } ; userId = client.data.userId (posé à
      -> notifyUser(organizerId, live.positions_updated, { eventId, positions: [position arrondie] })
 ```
 
-Constantes : rayon d'arrivée 50 m, TTL de position 120 s, cadence minimale 10 s, 3 décimales, plafond d'autorisation 8 h.
+Constantes : rayon d'arrivée de repli 150 m (l'arrivée normale est détectée par le client à 50 m), TTL de position 120 s, cadence minimale 10 s, 3 décimales, plafond d'autorisation 8 h.
+
+Limites connues : l'authentification du socket n'a lieu qu'à la connexion, donc un jeton d'accès qui expire n'arrête pas le partage (le TTL de l'autorisation le borne) ; un blocage ou une suppression de compte entre l'organisateur et le participant ne révoque pas une autorisation en cours (TTL également).
 
 Redis : réutiliser le `NestRedisProvider` déjà injecté dans `SocketManagerService` ; les clés sont locales à `ws-service` (la gateway n'accède pas à Redis), donc aucune constante partagée dans `shared`. **Pas de room par événement en V1** : l'organisateur reçoit par sa room utilisateur (`notifyUser`).
 
-Messages et journaux : **ne jamais journaliser une latitude ou une longitude**. Vérifier que `@volontariapp/logger` masque ces clés (skill `volontariapp-logger`) ; sinon les ajouter à la configuration de masquage ([06](06-risques-et-verifications.md) V5).
+Messages et journaux : **ne jamais journaliser une latitude ou une longitude**. `@volontariapp/logger` ne masque pas ces clés aujourd'hui (`masking.ts:4-22`, V5 réglé) : passer `masking: { keys: ['latitude', 'longitude'] }` au `Logger` créé dans `ws-service/src/main.ts` (option supportée, `logger.ts:11-12`), sans changement de paquet. Ne jamais ajouter `lat` seul (recherche par sous-chaîne : il masquerait `relation`, `template`). Le masquage porte sur les clés : une coordonnée interpolée dans une chaîne n'est pas masquée, donc interdite.
 
 ```mermaid
 sequenceDiagram
@@ -209,7 +238,10 @@ sequenceDiagram
     WS->>R: GET grant, SET pos (TTL 120 s)
     WS-->>Org: live.positions_updated (organisateur)
   end
-  WS-->>App: live.sharing_stopped (ARRIVED)
+  App->>App: arrivee detectee sur la position brute (50 m)
+  App->>GW: DELETE /live/events/:id/sharing?reason=ARRIVED
+  GW->>WS: DELETE /internal/live/grants/:id/:user (x-internal-token)
+  WS->>R: DEL grant, DEL pos
   WS-->>Org: live.sharing_stopped (ARRIVED)
 ```
 
@@ -219,18 +251,19 @@ sequenceDiagram
 | :--- | :--- |
 | Consentement | Désactivé par défaut, par événement, texte explicite, retrait à tout moment (`DELETE`) |
 | Finalité | Aider l'organisateur à savoir où est un participant qui arrive. Aucun autre usage |
-| Minimisation | Arrondi à environ 100 m côté client **et** côté serveur ; une seule position par utilisateur et par événement |
-| Durée | Autorisation jusqu'à la fin de l'événement plus 15 min (8 h au plus) ; position 120 s ; arrêt à l'arrivée |
-| Persistance | **Aucune en base SQL.** Redis avec TTL uniquement |
-| Audience | L'organisateur seul. Jamais les autres participants (ADR-6) |
-| Journaux | Jamais de coordonnées ; identifiants seulement |
-| Authentification | Handshake `ws-service` (jeton), appel interne gateway vers `ws-service` avec jeton interne signé |
-| Abus | Cadence minimale 10 s côté serveur ; autorisation obligatoire pour toute position |
+| Minimisation | Arrondi à environ 100 m côté client **et** côté serveur ; une seule position par utilisateur et par événement. **Protection faible à elle seule** : une suite de points à 100 m sur un trajet vers un lieu connu révèle la trajectoire, et le passage d'une cellule à l'autre trahit la position exacte. La protection réelle repose sur l'audience unique, le consentement et la durée |
+| Durée | Autorisation jusqu'à la fin de l'événement plus 15 min (8 h au plus, revérifié par `ws-service`) ; position 120 s ; arrêt à l'arrivée |
+| Persistance | **Aucune en base SQL.** Redis avec TTL uniquement ; Redis n'est pas chiffré au repos, ce qui n'est acceptable que grâce au TTL de 120 s |
+| Audience | L'organisateur seul, lu dans l'événement par la gateway, jamais dans la requête du client. Jamais les autres participants (ADR-6) |
+| Journaux | Jamais de coordonnées ; identifiants seulement ; masquage des clés dans `ws-service` ; aucun `console.log` de position dans `nativapp`. La gateway ne journalise pas l'URL de `GET /events`, qui porte la position exacte : à garder ainsi |
+| Authentification | Handshake `ws-service` (jeton) ; appel interne gateway vers `ws-service` avec jeton interne signé pour l'appelant et lié à `userId` (D18) |
+| Énumération | Événement introuvable et refus d'autorisation : même réponse |
+| Abus | Cadence minimale 10 s côté serveur ; autorisation obligatoire pour toute position ; payload validé (types, bornes) |
 | Référence | `AGENTS.md` section 6 (données personnelles, moindre privilège, traçabilité) |
 
 ## 9. Réseau (`deploy`)
 
-La gateway ne peut pas joindre Redis en production (`api-gateway.yaml:18-47`) mais peut joindre `ws-service`, qui accepte l'entrée depuis la gateway (`ws-service.yaml`). L'appel gateway vers `ws-service` ne demande donc **aucun changement de `deploy`**. `ws-service` utilise déjà Redis (`socket-manager.service.ts`), donc la sortie vers Redis existe (**inférence** : la suite du fichier de politique n'a pas été lue, à confirmer, [06](06-risques-et-verifications.md) V6). Si cette confirmation échoue, un lot `deploy` s'ajoute (skill `volontariapp-deploy-gitops`).
+La gateway ne peut pas joindre Redis en production (`api-gateway.yaml:18-47`) mais peut joindre `ws-service` sur tout port (`api-gateway.yaml:32-34`), qui accepte l'entrée depuis la gateway (`ws-service.yaml:14-47`). La sortie de `ws-service` vers Redis est autorisée (`ws-service.yaml:66-81`, V6 réglé le 2026-11-07). **Aucun changement de `deploy`.**
 
 ## 10. Observabilité
 
