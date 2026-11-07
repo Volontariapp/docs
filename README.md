@@ -14,6 +14,7 @@ docs/
 ├── stockage-fichiers/       # Upload S3, quarantaine, scan, rattachement (ms-storage)
 ├── badges/                  # Attribution automatique des 13 badges
 ├── scoring/                 # Points d'événement : formule, check-in, crédit asynchrone, leaderboard
+├── live-events/             # Rejoindre un événement en direct : recherche autour de soi, trajet à pied, partage de position
 ├── suppression-compte/      # Règles d'événements lors d'une suppression de compte
 ├── post-processors/         # Notes de conception sur les consommateurs de Redis Streams
 ├── coaching/                # Rapports de suivi (Word) et pièces associées
@@ -38,6 +39,7 @@ docs/
 | [stockage-fichiers](stockage-fichiers/README.md) | Upload direct S3, quarantaine, scan ClamAV, rattachement des images aux posts, événements et avatars | Flux principaux implémentés ; purge des orphelins non réalisée |
 | [badges](badges/README.md) | Attribution asynchrone des 13 badges et notification temps réel | Implémenté |
 | [scoring](scoring/README.md) | Points d'événement calculés par formule (durée, présence, ordre d'inscription), prime du créateur, flux de crédit asynchrone, leaderboard | Conception du 2026-10-30, non implémentée ; exposant à trancher |
+| [live-events](live-events/README.md) | Rejoindre un événement en cours autour de soi (zone de 2 km, trajet à pied, écran commun), puis partage de position réduit vers l'organisateur | Conception validée le 2026-11-07, non implémentée |
 | [suppression-compte](suppression-compte/README.md) | Sort des événements quand un organisateur ou un participant supprime son compte | Proposition de conception |
 | [post-processors](post-processors/README.md) | Fan-out des streams `user.deleted`, DLQ | Décision ouverte |
 
