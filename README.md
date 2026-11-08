@@ -17,6 +17,7 @@ docs/
 ├── live-events/             # Rejoindre un événement en direct : recherche autour de soi, trajet à pied, partage de position
 ├── suppression-compte/      # Règles d'événements lors d'une suppression de compte
 ├── post-processors/         # Notes de conception sur les consommateurs de Redis Streams
+├── montee-en-charge/        # Passer de 200 à 300 requêtes par seconde : mesures, analyses, plan d'implémentation
 ├── coaching/                # Rapports de suivi (Word) et pièces associées
 ├── scripts/                 # Outils de génération des rapports
 └── ci-tools/                # Sous-module Git (CI partagée, docker-compose local)
@@ -42,6 +43,7 @@ docs/
 | [live-events](live-events/README.md) | Rejoindre un événement en cours autour de soi (zone de 2 km, trajet à pied, écran commun), puis partage de position réduit vers l'organisateur | Conception validée le 2026-11-07, non implémentée |
 | [suppression-compte](suppression-compte/README.md) | Sort des événements quand un organisateur ou un participant supprime son compte | Proposition de conception |
 | [post-processors](post-processors/README.md) | Fan-out des streams `user.deleted`, DLQ | Décision ouverte |
+| [montee-en-charge](montee-en-charge/README.md) | Passer de 200 à 300 requêtes par seconde sur la machine actuelle : mesures de la rampe de charge, analyses (CPU, journaux, OpenTelemetry, HPA, gRPC, Go ou non), plan en phases | Analyse du 2026-11-09, plan proposé, non implémenté |
 
 ## Écosystème des dépôts
 
