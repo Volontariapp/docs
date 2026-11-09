@@ -5,7 +5,7 @@ Analyses détaillées, service par service, de ce qui coûte du CPU à chaque re
 | Service | Profil CPU | Rapport | Statut |
 | :--- | :--- | :--- | :--- |
 | `ms-user` | aucun, estimations par lecture de code | [ms-user.md](ms-user.md) | rédigé |
-| `ms-social` | résumé du profil à 225 req/s (fichier écrasé, voir plus bas) | à venir | analyse en cours |
+| `ms-social` | résumé du profil à 225 req/s (fichier écrasé, voir plus bas) | [ms-social.md](ms-social.md) | rédigé |
 | `ms-event` | résumé du profil à 225 req/s (fichier écrasé), micro-mesures locales | [ms-event.md](ms-event.md) | rédigé |
 | `ms-post` | aucun, estimations par lecture de code et banc local | [ms-post.md](ms-post.md) | rédigé |
 | `api-gateway` | résumé du profil à 225 req/s (fichier écrasé), profil détaillé du 2026-11-08 | [api-gateway.md](api-gateway.md) | rédigé |
@@ -42,3 +42,23 @@ Les trois profils pris à 10:03Z (gateway, `ms-social`, `ms-event`) ont été an
 - Les instrumentations OpenTelemetry `express` et `router` produisent environ 15 des 20 spans par requête ; une variable d'environnement de `deploy` suffit pour les couper.
 - `events-list-app` enchaîne 2 à 3 appels gRPC en série (exclusions, recherche, compteurs) qu'on ne peut pas paralléliser sans casser la pagination : seul le cache des exclusions (C2) retire un aller-retour.
 - Gain total estimé : 15 à 20 % du CPU de la gateway (INFERENCE). Fastify et ES256 ou EdDSA écartés pour l'instant.
+
+## À retenir pour `ms-social`
+
+- `GetSearchExclusions` représente environ 70 % des appels reçus par `ms-social` et 84 % de ses requêtes Neo4j (INFERENCE, calcul à partir du mélange). Chaque appel lance 2 requêtes Cypher, chacune dans sa propre session, qui renvoient jusqu'à 1 001 lignes.
+- Correction du [chapitre 04](../04-resultats.md), section 4.5 : la ligne de log la plus fréquente n'est pas celle des posts. Les lignes d'exclusions contiennent l'identifiant de l'utilisateur, ce qui les avait dispersées dans le comptage par message.
+- Le driver Neo4j (6.3.0) capture une pile d'appels pour chaque résultat, sans option pour l'éviter : le seul levier est de faire moins de requêtes.
+- Leviers principaux : le cache des exclusions à la gateway (C2, décision produit, 20 à 60 % de `ms-social`), une seule requête Cypher pour les exclusions (`domain-social`, règle du STOP), les lignes `info` des lectures en `debug`.
+- Un cache de jetons vérifiés dans `ms-social` seul ne servirait à rien : la gateway signe un nouveau jeton à chaque requête.
+
+## Synthèse : ce qui revient dans plusieurs rapports
+
+| Levier | Services concernés | Où | Prérequis |
+| :--- | :--- | :--- | :--- |
+| Cache des exclusions (C2) | gateway, `ms-social`, Neo4j | `api-gateway` | Décision produit sur le délai d'application d'un blocage |
+| Jeton interne réutilisé, jetons vérifiés en cache (C3) | gateway et tous les `ms-*` | `@volontariapp/auth` | Règle du STOP, revue de sécurité |
+| Lignes `info` par appel passées en `debug` (plan 2.4) | tous les `ms-*`, gateway | chaque dépôt | aucun |
+| Instrumentations OpenTelemetry inutiles coupées | tous | `deploy` (`OTEL_NODE_DISABLED_INSTRUMENTATIONS`) | vérifier une trace dans Datadog après |
+| Deux requêtes SQL au lieu d'une (TypeORM, pagination ou `findOne` avec jointure) | `ms-user`, `ms-post` | `domain-user`, `domain-post` | Règle du STOP |
+| `COUNT` coûteux recalculé à chaque recherche ou page | `ms-event`, `ms-post` | `domain-event`, `domain-post` | Règle du STOP, décision sur le sens du total |
+| Nouveau profil CPU, fichiers nommés par l'heure | tous | Victor | Ne pas supprimer le pod pendant la capture |
