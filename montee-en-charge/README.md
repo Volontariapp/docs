@@ -12,7 +12,7 @@ Dossier rédigé le 2026-11-09 à partir des mesures du soir du 2026-11-08 (Vict
 | [02 - Analyses](02-analyses.md) | Où part le CPU, les incidents expliqués, le profil de la gateway, les journaux, OpenTelemetry, la répartition gRPC, l'hypothèse matérielle, la question Go |
 | [03 - Plan d'implémentation](03-plan-d-implementation.md) | Budget de CPU, phases avec portes de décision, fichiers à modifier, critères de réussite, risques, décisions ouvertes |
 | [04 - Résultats](04-resultats.md) | Ce qui a été livré (PR), rampes avant et après, répartition gRPC, profils CPU à 225 req/s, fréquence de l'hôte, ce qui limite à 275 req/s |
-| [Analyses par service](analyses-services/README.md) | Ce qui coûte du CPU dans chaque service et comment le réduire (`ms-user`, `ms-post`, `ms-event` et `api-gateway` rédigés, `ms-social` en cours) |
+| [Analyses par service](analyses-services/README.md) | Ce qui coûte du CPU dans chaque service et comment le réduire (les cinq services et une synthèse) |
 | [05 - Plan vers 300](05-plan-vers-300.md) | Phases A (hôte), B (mémoire de Node), C (code), D (mesure finale), portes de décision, décisions ouvertes |
 
 ## Le résumé
