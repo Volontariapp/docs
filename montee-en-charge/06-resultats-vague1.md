@@ -113,7 +113,7 @@ Aucune ligne `DEADLINE_EXCEEDED` ni « did not answer in time » dans les journa
 
 ## 6. Prochaines étapes
 
-1. **Phase D** : rejouer 275 et 300 deux fois à 15 minutes d'intervalle, avec la boucle de fréquence de l'hôte, pour confirmer.
+1. **Phase D** : rejouer 275 et 300 deux fois à 15 minutes d'intervalle, avec la boucle de fréquence de l'hôte, pour confirmer. Fait à 12:31 : voir le [chapitre 07](07-ms-event-db-et-memoire.md).
 2. **`ms-event-db`** : le prochain goulot. La vague 2 (`domain-event` : total en cache, listes en un seul paramètre tableau) vise exactement ce `COUNT`.
 3. **Cache des exclusions** : à 10 %, le déplacer dans ms-social (2 pods, vidage là où les écritures arrivent) ou le retirer. Décision à prendre après la phase D.
 4. **Gateway** : passer `minReplicas` à 6 (étape C4 du plan) pour éviter un pod froid à 300 req/s, puisque l'HPA est au bord de sa cible.
