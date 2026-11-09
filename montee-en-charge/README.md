@@ -2,7 +2,7 @@
 
 Dossier rédigé le 2026-11-09 à partir des mesures du soir du 2026-11-08 (Victor, Lead Dev, avec un agent Claude Code). Il répond à une question : **que faut-il faire pour que la plateforme tienne 300 requêtes par seconde sur la machine actuelle ?** Il explique ce qui a été mesuré, ce que cela prouve et ne prouve pas, puis le plan d'implémentation, étape par étape.
 
-**Statut au 2026-11-09 : analyse terminée, plan proposé, rien du plan n'est implémenté.** Seuls les correctifs listés dans la section "Déjà livré" du [chapitre 01](01-mesures-et-methode.md) sont en production.
+**Statut au 2026-11-09 (matin) : phases 1 à 3 livrées et mesurées.** La plateforme tient **250 req/s** (p95 489 ms, 0 % d'erreur) contre 200 la veille ; 275 s'effondre quand le nœud atteint 85 % de son CPU. 300 req/s n'est pas atteint. Détail au [chapitre 04](04-resultats.md).
 
 ## Chapitres
 
@@ -11,6 +11,7 @@ Dossier rédigé le 2026-11-09 à partir des mesures du soir du 2026-11-08 (Vict
 | [01 - Mesures et méthode](01-mesures-et-methode.md) | Machine, méthode de la rampe de charge, résultats palier par palier, ce qui est déjà livré, limites des mesures |
 | [02 - Analyses](02-analyses.md) | Où part le CPU, les incidents expliqués, le profil de la gateway, les journaux, OpenTelemetry, la répartition gRPC, l'hypothèse matérielle, la question Go |
 | [03 - Plan d'implémentation](03-plan-d-implementation.md) | Budget de CPU, phases avec portes de décision, fichiers à modifier, critères de réussite, risques, décisions ouvertes |
+| [04 - Résultats](04-resultats.md) | Ce qui a été livré (PR), rampes avant et après, répartition gRPC, ce qui limite à 275 req/s, prochaines étapes |
 
 ## Le résumé
 
