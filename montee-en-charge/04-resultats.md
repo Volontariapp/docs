@@ -110,6 +110,39 @@ Après déploiement, aucune ligne `debug` dans les journaux de la gateway, des `
 
 INFERENCE (calcul) : à 40m de CPU de nœud par req/s au pic de 250, 300 req/s demanderaient environ 12 vCPU, soit 86 % du nœud. Le plan visait 36m par req/s ; on est entre 33m (200 req/s) et 40m (250 req/s). Il manque environ 10 % de CPU par requête, ou plus de CPU.
 
+### 4.5 Les profils CPU à 225 req/s (10:03Z)
+
+Profils de 30 s pris par Victor pendant un palier à 225 req/s qui a tenu (p95 379 ms, 0 % d'erreur), un pod par service, outil `analyze-cpuprofile.mjs` (skill `volontariapp-load-ramp`). FAIT pour les parts ci-dessous, en % du temps occupé.
+
+| Poste | gateway | `ms-social` | `ms-event` |
+| :--- | ---: | ---: | ---: |
+| **Temps occupé** | **48 %** | **70 %** | **58 %** |
+| Ramasse-miettes | 13,8 % | 14,5 % | 13,3 % |
+| HTTP, réseau, Express | 21,1 % | 7,5 % | 6,2 % |
+| gRPC (`grpc-js`) | 8,5 % | 3,6 % | 2,9 % |
+| JWT et cryptographie | 4,5 % | 4,5 % | 1,9 % |
+| Validation et DTO | 1,5 % | 2,5 % | 4,2 % |
+| Logger et console | 0,7 % | 3,5 % | 1,7 % |
+| Notre code | 1,1 % | 0,2 % | 0,4 % |
+
+Lecture :
+
+- **Les journaux ne pèsent plus** dans la gateway : 0,7 % contre environ 15 % dans le profil du 2026-11-08 ([chapitre 02](02-analyses.md), section 5). `ms-social` écrit environ 10 lignes par seconde et par pod, presque toutes `info` "gRPC: ..." (FAIT : `kubectl logs`).
+- **La gateway n'est plus le goulot** : occupée à 48 % à 225 req/s. Le processus le plus chargé est `ms-social` (70 %).
+- **Le ramasse-miettes pèse 13 à 15 % partout.** C'est maintenant le premier poste commun.
+- **Le jeton interne coûte des deux côtés** : signature à la gateway (`SignJob`), vérification dans chaque `ms-*` (`verifySignature` de `jose`), 4,5 % de `ms-social`.
+- `ms-social` : le driver Neo4j capture une pile d'appels par requête (`captureStacktrace` et `defaultPrepareStackTrace`, 3,7 %). `ms-event` : TypeORM transforme les lignes en objets (`loadRawResults`, `transformColumns`, `replacePropertyNamesForTheWholeQuery`, environ 6 %).
+
+### 4.6 La fréquence et la température de l'hôte
+
+Relevées par Victor sur `pve` toutes les 2 s (moyenne des `cpu MHz` de `/proc/cpuinfo`, zone thermique la plus chaude). FAIT :
+
+- Limites de puissance du processeur : 28 W en continu (`long_term`), 64 W en courte durée (`short_term`), 80 W en pointe (`peak_power`).
+- Palier 250 de 10:00:31 (effondré) : 3 000 à 3 500 MHz et 85 à 93 °C pendant environ 25 s, puis 2 800 MHz et 78 à 84 °C. L'effondrement commence dans la fenêtre 10:00:51 à 10:01:01, au moment de la baisse. L'hôte était déjà à 85-90 °C avant le palier.
+- Palier 225 de 10:03:02 (tenu) : 2 900 à 3 100 MHz en régime établi, 77 à 82 °C.
+
+INFERENCE : la baisse d'environ 18 % correspond au passage de la limite de courte durée (64 W) à la limite continue (28 W). Tous les effondrements de la matinée commencent 20 à 30 s après le début du palier (09:37, 09:52, 10:00). Le seuil du plan pour conclure à une limite matérielle (25 % de baisse) n'est pas atteint, mais l'hypothèse du [chapitre 02](02-analyses.md), section 9, se renforce : au-delà de 225 req/s, le plafond est autant thermique que logiciel.
+
 ## 5. Limites de ces mesures
 
 | Limite | Conséquence |
@@ -118,16 +151,9 @@ INFERENCE (calcul) : à 40m de CPU de nœud par req/s au pic de 250, 300 req/s d
 | Aucun compteur de réussite des caches | On ne sait pas ce que chaque cache rapporte |
 | Les livraisons des phases 1 à 3 ont été mesurées ensemble | La règle « une phase, une mesure » n'a pas été tenue ; la part de chaque levier est inconnue |
 | L'HPA agit encore pendant les paliers (6e pod à 09:38 et 09:49) | Le premier 250 et le second ne sont pas comparables à l'identique |
-| Fréquence et température de l'hôte non mesurées | L'hypothèse matérielle du chapitre 02, section 9, reste ouverte |
-| Profils CPU des `ms-*` non faits (`kubectl exec` refusé à l'agent) | La part des journaux et des traces dans les `ms-*` reste NON VERIFIEE |
+| Fréquence de l'hôte : moyenne de tous les cœurs, toutes les 2 s | Les baisses brèves et par cœur ne se voient pas |
+| Profils d'un seul pod par service, sur 30 s | Les parts peuvent varier d'un pod ou d'un moment à l'autre |
 
-## 6. Prochaines étapes pour 300 req/s
+## 6. Prochaines étapes
 
-| Ordre | Levier | Gain attendu (INFERENCE) | Prérequis |
-| ---: | :--- | :--- | :--- |
-| 1 | Un palier à 250 avec profils CPU (gateway, `ms-social`, `ms-event`) et fréquence de l'hôte | Savoir si 300 se gagne par le code ou si l'hôte ralentit sous charge | Lancé à la main par Victor (`kubectl exec`, ssh `pve`) |
-| 2 | Compteurs de réussite des caches existants | Mesurer avant d'ajouter des caches | aucun |
-| 3 | Cache des exclusions par utilisateur, 5 s, à la gateway | Le plus gros poste restant : `ms-social` et Neo4j, environ 1,5 vCPU au pic | Décision produit : un blocage visible jusqu'à 5 s de plus |
-| 4 | Gateway : `minReplicas` 6, sonde de disponibilité HTTP | Plus de pod froid en plein pic | PR `deploy` |
-| 5 | Réutilisation du jeton interne | Environ 1 ms de CPU par requête à la gateway | Profil, revue de sécurité |
-| 6 | Seconde machine | Lève le plafond de 14 vCPU | Matériel |
+Le plan pour 300 req/s est au [chapitre 05](05-plan-vers-300.md).
