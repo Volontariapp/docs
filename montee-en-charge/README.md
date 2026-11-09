@@ -2,7 +2,7 @@
 
 Dossier rédigé le 2026-11-09 à partir des mesures du soir du 2026-11-08 (Victor, Lead Dev, avec un agent Claude Code). Il répond à une question : **que faut-il faire pour que la plateforme tienne 300 requêtes par seconde sur la machine actuelle ?** Il explique ce qui a été mesuré, ce que cela prouve et ne prouve pas, puis le plan d'implémentation, étape par étape.
 
-**Statut au 2026-11-09 (matin) : phases 1 à 3 livrées et mesurées.** La plateforme tient **250 req/s** (p95 489 ms, 0 % d'erreur) contre 200 la veille ; 275 s'effondre quand le nœud atteint 85 % de son CPU. 300 req/s n'est pas atteint. Détail au [chapitre 04](04-resultats.md), plan vers 300 au [chapitre 05](05-plan-vers-300.md).
+**Statut au 2026-11-09 (midi) : vague 1 livrée et mesurée.** La plateforme tient **300 req/s** (p95 196 ms, 0 % d'erreur, nœud à 56 %), contre 250 le matin. Un passage seulement : à confirmer par la phase D. Prochain goulot : `ms-event-db` (88 % de sa limite de CPU à 300 req/s). Détail au [chapitre 06](06-resultats-vague1.md).
 
 ## Chapitres
 
@@ -14,6 +14,7 @@ Dossier rédigé le 2026-11-09 à partir des mesures du soir du 2026-11-08 (Vict
 | [04 - Résultats](04-resultats.md) | Ce qui a été livré (PR), rampes avant et après, répartition gRPC, profils CPU à 225 req/s, fréquence de l'hôte, ce qui limite à 275 req/s |
 | [Analyses par service](analyses-services/README.md) | Ce qui coûte du CPU dans chaque service et comment le réduire (les cinq services et une synthèse) |
 | [05 - Plan vers 300](05-plan-vers-300.md) | Phases A (hôte), B (mémoire de Node), C (code), D (mesure finale), portes de décision, décisions ouvertes |
+| [06 - Résultats de la vague 1](06-resultats-vague1.md) | Sept changements (OpenTelemetry, journaux, HTTP, caches, validation, deadlines), rampe 225 à 300 req/s, CPU par pod, réussite des caches, prochain goulot |
 
 ## Le résumé
 
