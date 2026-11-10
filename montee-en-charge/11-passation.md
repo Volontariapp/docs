@@ -88,7 +88,9 @@ Décisions prises (valent décision de Victor) :
 | :--- | :--- | :--- |
 | deploy#77 | `pg_stat_statements` | fusion hors rampe, puis `CREATE EXTENSION` |
 | meta#62 | leçon sur les variables non liées | fusion |
-| ms-social, PR du préchauffage au retour de Neo4j | readiness pendant le préchauffage | relire, fusionner, puis le test d'acceptation de la section 2.1 |
+| ms-social#77 | préchauffage au retour de Neo4j (sonde toutes les 5 s), readiness en 503 pendant 30 s au plus ; 222 tests verts | fusionner **en même temps que** deploy#78 |
+| deploy#78 | readinessProbe de ms-social à `periodSeconds: 5`, `failureThreshold: 1` ; `/health` répond en 0,11 à 0,18 s. Sans elle, le 503 de ms-social#77 n'a presque aucun effet | fusionner avec ms-social#77, puis le test d'acceptation de la section 2.1 |
+| (images) post-processors-runner#76 | le 2026-11-10, seuls `post-processor-social`, `-storage` et `-post` tournaient sur `sha-54928b2` ; `-event`, `-ranking` et `-user` étaient restés sur `sha-19e0d89`, et affichaient encore `MaxListenersExceededWarning`. `ws-service` (`sha-fae34ea`) : 0 avertissement | vérifier dans `deploy` les images des trois apps, et les monter à `sha-54928b2` si elles manquent (montée d'image dans le désordre, voir la skill `volontariapp-deploy-gitops`) |
 
 ## 4. Pièges appris
 
