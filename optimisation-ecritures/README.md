@@ -4,7 +4,7 @@ Dossier rédigé le 2026-11-10 par un agent Claude Code, à partir d'une premiè
 
 Le code lu est celui de `origin/main` le 2026-11-10 (`npm-packages` add719b8, `outbox-runners` 2028223, `post-processors-runner` 19e0d892, `workers-runners` 37dc441, `ms-*`, `deploy` e010ccc). TypeORM est lu dans le tarball `typeorm@0.3.31`, la version résolue par tous les `yarn.lock`. Les mesures viennent des bases de prod, en lecture seule.
 
-**Statut au 2026-11-10 : mise en œuvre commencée.** L0 (deploy#77, brouillon) et L2 (outbox-runners#48, deploy#76) en PR ; conception de L9 (chapitre 06) et options de L11 (chapitre 07) écrites ; L3 à L10 attendent le feu vert pour `npm-packages`. Le suivi lot par lot est au chapitre 03, section « Avancement ».
+**Statut au 2026-11-10 vers 16:00 : L0, L2 et L3 en prod, L4 publié, phase 1 de L9 en prod.** L4 se monte dans les runners (outbox-runners#49) ; worker-social (workers-runners#65) en revue ; la phase `async` de L9 attend le [ticket du chapitre 12 de `montee-en-charge`](../montee-en-charge/12-ticket-l9-prerequis-async.md) ; L5 à L8, L10 à L12 restent à faire. Le suivi lot par lot est au chapitre 03, section « Avancement ».
 
 ## Le résumé
 
