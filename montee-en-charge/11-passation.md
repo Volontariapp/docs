@@ -1,6 +1,27 @@
 # 11 - Passation pour les prochains agents
 
-État au 2026-11-10 vers 14:00 (UTC). Ce document dit où en est chaque chantier, ce qui reste à faire, dans quel ordre, et les pièges à connaître. Les détails sont dans les chapitres [08](08-memoire-vague2-et-400.md), [09](09-demarrage-a-froid.md) et [10](10-suites.md) de ce dossier, et dans le dossier [`optimisation-ecritures/`](../optimisation-ecritures/README.md).
+État au 2026-11-10 vers 14:00 (UTC), mis à jour vers 16:00 (section 0). Ce document dit où en est chaque chantier, ce qui reste à faire, dans quel ordre, et les pièges à connaître. Les détails sont dans les chapitres [08](08-memoire-vague2-et-400.md), [09](09-demarrage-a-froid.md) et [10](10-suites.md) de ce dossier, et dans le dossier [`optimisation-ecritures/`](../optimisation-ecritures/README.md).
+
+## 0. Mise à jour du 2026-11-10 vers 16:00
+
+Les sections 2 et 3 décrivent l'état de 14:00. Depuis :
+
+| Chantier | Nouvel état |
+| :--- | :--- |
+| Démarrage à froid (2.1) | **Terminé.** ms-social#77 et deploy#78 déployés ; critère d'acceptation validé à 14:21 : **0,0 %** d'erreurs, p95 253 ms. Le critère se lit « 30 s après que `neo4j-0` est Ready » (chapitre 09, section 6.1) : l'essai de 13:58, lancé pendant la coupure de Neo4j, donnait 14,6 % |
+| Arrêt des post-processors (2.2) | **Vérifié** : 0 `MaxListeners` sur ws-service et les 6 post-processors ; images alignées |
+| Rampe réaliste (2.3) | Inchangé : validation R8 (10, 25, 50 req/s avec écritures) puis rampe vers 300 encore à faire. Recommandation : `LOAD_WRITES=default,like-toggle,comment-cycle`, sinon la sonde WebSocket ne mesure rien |
+| L0 `pg_stat_statements` | **Fait** (deploy#77) : extension dans les 7 bases, compteurs depuis 14:36 |
+| L3 idempotence des post-processors | **Déployé** : `post-processors` 3.7.0 (npm-packages#320), post-processors-runner#77, ws-service#61 |
+| L4 reprise de l'outbox | **Publié** : `database` 3.15.0, `config` 3.6.0 (npm-packages#322) ; montée dans les 7 `outbox-*` dans outbox-runners#49 |
+| L9 ms-social Postgres d'abord | **Phase 1 en prod** : npm-packages#321, ms-social#78 (migration `social_edge`, double écriture en `sync`), backfill de 135 810 lignes vérifié ; worker-social dans workers-runners#65. Phase `async` : prérequis au [chapitre 12](12-ticket-l9-prerequis-async.md) |
+
+Reste à faire, dans l'ordre :
+1. Fusionner workers-runners#65 et outbox-runners#49 une fois leur CI verte (E2E comprises).
+2. Après déploiement de #49 : rejouer les 147 lignes du 2026-11-07 avec `requeue`, un type à la fois, après lecture de ses consommateurs (`analyze_impact`). Commande au chapitre 03 d'`optimisation-ecritures`, ligne L4.
+3. Rampe R8 puis rampe vers 300 req/s (section 2.3).
+4. Ticket du chapitre 12, puis la bascule `SOCIAL_WRITE_MODE=async`.
+5. L5 (outbox par lot), puis L11, L6 à L8, L10, L12.
 
 ## 1. À lire d'abord
 
@@ -93,6 +114,18 @@ Décisions prises (valent décision de Victor) :
 | (images) post-processors-runner#76 | le 2026-11-10, seuls `post-processor-social`, `-storage` et `-post` tournaient sur `sha-54928b2` ; `-event`, `-ranking` et `-user` étaient restés sur `sha-19e0d89`, et affichaient encore `MaxListenersExceededWarning`. `ws-service` (`sha-fae34ea`) : 0 avertissement | vérifier dans `deploy` les images des trois apps, et les monter à `sha-54928b2` si elles manquent (montée d'image dans le désordre, voir la skill `volontariapp-deploy-gitops`) |
 
 ## 4. Pièges appris
+
+Ajoutés le 2026-11-10 après-midi :
+- Le test à froid se lance après `kubectl wait --for=condition=Ready pod/neo4j-0`, pas après un délai fixe : Neo4j met de 17 à 85 s à revenir.
+- ArgoCD redéploie toutes les bases d'un coup quand une PR `deploy` touche plusieurs overlays : prévoir la coupure simultanée.
+- Poser le label `docker-and-e2e` sur une PR ne relance pas sa CI : pousser un commit vide avec `scripts/pr-retrigger.sh <repo>#<n>`. Fermer puis rouvrir la PR marche aussi, mais notifie tout le monde.
+- Sur le Mac de Victor, watchman est cassé : lancer jest avec `--no-watchman`, sinon il rend 0 sans rien tester. Dans un worktree, eslint et jest se lancent depuis la racine du worktree, pas via `yarn --cwd`.
+- Un `bin` ajouté à un `package.json` de `npm-packages` change le `yarn.lock` : relancer `yarn install` avant de pousser, sinon `yarn install --immutable` échoue en CI.
+- `jobs_outbox.scheduled_at` est NOT NULL : tout producteur de job doit le remplir.
+- `@volontariapp/outbox` 0.11.0 fige `database` 3.14.0 et `messaging` 2.35.0 : monter aussi `database` (et `workers` chez les workers), sinon deux `messaging` cohabitent et le pusher lit une table d'options sans `SOCIAL_EDGE_APPLY`.
+- Le disque du Mac sature vite avec plusieurs worktrees (un `node_modules` par worktree) : supprimer les worktrees fusionnés.
+
+Avant :
 
 - Chart Neo4j 5.20.0 : les ressources se règlent sous `neo4j.resources`. Une clé `resources:` à la racine est ignorée sans avertissement : Neo4j tournait avec 1 CPU au lieu de 2.
 - Une variable de `deploy` n'est lue que si `custom-env-vars.json` la lie (piège trouvé sur `OUTBOX_MAX_IDLE_INTERVAL_MS`).

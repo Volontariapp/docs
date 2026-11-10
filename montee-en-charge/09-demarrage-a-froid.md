@@ -100,7 +100,20 @@ Pourquoi la gateway à 7 pods fixes : l'HPA ajoute un pod par minute au plus, et
 
 ## 6. Critère d'acceptation
 
-Rejouer le test 2 une fois les trois PR déployées : redémarrage de `neo4j-0`, 30 s sans trafic, rafale de 100 req/s avec le mélange de 21:01, montée et échauffement à 0, 60 s. Réussite : moins de 1 % d'erreurs, et Neo4j sous sa limite de CPU. L'ordre recommandé pour isoler les effets : d'abord C1 seul, puis C2 et C3, puis C4.
+Rejouer le test 2 une fois les trois PR déployées : redémarrage de `neo4j-0`, **attente de `kubectl wait --for=condition=Ready pod/neo4j-0`**, puis 30 s sans trafic, rafale de 100 req/s avec le mélange de 21:01, montée et échauffement à 0, 60 s. Réussite : moins de 1 % d'erreurs, et Neo4j sous sa limite de CPU. L'ordre recommandé pour isoler les effets : d'abord C1 seul, puis C2 et C3, puis C4.
+
+Les 30 s se comptent à partir du moment où `neo4j-0` est Ready, pas à partir de sa suppression : Neo4j a mis 17 s à redevenir Ready le 2026-11-10 à 14:20, et environ 85 s à 13:58. Une attente fixe mesure la durée de la coupure de Neo4j, pas le froid.
+
+### 6.1 Résultat (2026-11-10)
+
+Avec ms-social#77 (préchauffage au retour de Neo4j, readiness en 503 pendant au plus 30 s) et deploy#78 (readiness toutes les 5 s, hors service après un échec), image ms-social `sha-67f09a2` :
+
+| Essai | Rafale lancée | Erreurs sur 60 s | Erreurs sur les 15 premières s | p95 |
+| :--- | :--- | ---: | ---: | ---: |
+| 13:58 | 48 s après la suppression de `neo4j-0`, Neo4j encore indisponible | 14,6 % | 45,8 % (events-list-app à 100 %) | 2 036 ms |
+| 14:21 | `neo4j-0` Ready à 14:20:14, 30 s sans trafic, rafale à 14:21:08 | **0,0 %** | **0,0 %** | 253 ms |
+
+Le premier essai ne mesure pas le froid : pendant la coupure, les deux pods ms-social sont hors service et aucune lecture Neo4j ne peut aboutir. Le second valide le critère. Relevés bruts dans `meta/profiles/cold-acceptance-final/` et `meta/profiles/cold-acceptance-ready/`.
 
 ## 7. Points ouverts
 
