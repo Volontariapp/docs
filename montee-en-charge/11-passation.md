@@ -88,7 +88,8 @@ Décisions prises (valent décision de Victor) :
 | :--- | :--- | :--- |
 | deploy#77 | `pg_stat_statements` | fusion hors rampe, puis `CREATE EXTENSION` |
 | meta#62 | leçon sur les variables non liées | fusion |
-| ms-social, PR du préchauffage au retour de Neo4j | readiness pendant le préchauffage | relire, fusionner, puis le test d'acceptation de la section 2.1 |
+| ms-social#77 | préchauffage au retour de Neo4j (sonde toutes les 5 s), readiness en 503 pendant 30 s au plus ; 222 tests verts | fusionner, **avec** la PR deploy de la ligne suivante |
+| (à ouvrir) deploy | readinessProbe de ms-social à `periodSeconds: 5`, `failureThreshold: 1` dans `apps/base/ms-social/deployment.yaml`. Avec la sonde actuelle (10 s, seuil 3), le pod ne sort du service qu'après environ 30 s, et le 503 de ms-social#77 n'a presque aucun effet. Vérifier que `/health` répond en moins de 2 s | ouvrir, fusionner, puis le test d'acceptation de la section 2.1 |
 
 ## 4. Pièges appris
 
