@@ -18,6 +18,7 @@ docs/
 ├── suppression-compte/      # Règles d'événements lors d'une suppression de compte
 ├── post-processors/         # Notes de conception sur les consommateurs de Redis Streams
 ├── montee-en-charge/        # Passer de 200 à 300 requêtes par seconde : mesures, analyses, plan d'implémentation
+├── optimisation-ecritures/  # Allers-retours des écritures, outbox, idempotence : constats vérifiés, mesures, plan en lots
 ├── coaching/                # Rapports de suivi (Word) et pièces associées
 ├── scripts/                 # Outils de génération des rapports
 └── ci-tools/                # Sous-module Git (CI partagée, docker-compose local)
@@ -44,6 +45,7 @@ docs/
 | [suppression-compte](suppression-compte/README.md) | Sort des événements quand un organisateur ou un participant supprime son compte | Proposition de conception |
 | [post-processors](post-processors/README.md) | Fan-out des streams `user.deleted`, DLQ | Décision ouverte |
 | [montee-en-charge](montee-en-charge/README.md) | Passer de 200 à 300 requêtes par seconde sur la machine actuelle : mesures de la rampe de charge, analyses (CPU, journaux, OpenTelemetry, HPA, gRPC, Go ou non), plan en phases | Analyse du 2026-11-09, plan proposé, non implémenté |
+| [optimisation-ecritures](optimisation-ecritures/README.md) | Coût des écritures (socle `database`, outbox, post-processors, ms-social), 147 événements bloqués mesurés en prod, plan en 13 lots de 3 h | Analyse du 2026-11-10, plan proposé, non implémenté |
 
 ## Écosystème des dépôts
 
