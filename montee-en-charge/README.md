@@ -21,6 +21,7 @@ Historique : le 2026-11-09 à 14:00, 300 req/s tenaient une fois, à la limite a
 | [08 - Mémoire de la VM, vague 2, puis 400 req/s](08-memoire-vague2-et-400.md) | Ballon Proxmox, limites de Traefik, vague 2 (jetons, exclusions, pages de posts, GetUser), rampes jusqu'à 400 req/s, marge par composant, limite du mélange de 4 routes |
 | [09 - Démarrage à froid](09-demarrage-a-froid.md) | Panne de la première rafale, deux tests qui départagent les hypothèses, Neo4j à 1 CPU par erreur, correctifs C1 à C5, critère d'acceptation |
 | [10 - Suites](10-suites.md) | Rampe réaliste (décisions, lots L1 à L8), arrêt des post-processors (SIGTERM), optimisation des écritures, ordre de mise en œuvre, règles de travail |
+| [11 - Passation](11-passation.md) | État de chaque chantier au 2026-11-10, PR ouvertes, commandes, décisions et pièges pour les prochains agents |
 
 ## Le résumé
 
