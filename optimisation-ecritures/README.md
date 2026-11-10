@@ -4,7 +4,7 @@ Dossier rédigé le 2026-11-10 par un agent Claude Code, à partir d'une premiè
 
 Le code lu est celui de `origin/main` le 2026-11-10 (`npm-packages` add719b8, `outbox-runners` 2028223, `post-processors-runner` 19e0d892, `workers-runners` 37dc441, `ms-*`, `deploy` e010ccc). TypeORM est lu dans le tarball `typeorm@0.3.31`, la version résolue par tous les `yarn.lock`. Les mesures viennent des bases de prod, en lecture seule.
 
-**Statut : analyse terminée, rien n'est implémenté.**
+**Statut au 2026-11-10 : mise en œuvre commencée.** L0 (deploy#77, brouillon) et L2 (outbox-runners#48, deploy#76) en PR ; conception de L9 (chapitre 06) et options de L11 (chapitre 07) écrites ; L3 à L10 attendent le feu vert pour `npm-packages`. Le suivi lot par lot est au chapitre 03, section « Avancement ».
 
 ## Le résumé
 
@@ -28,6 +28,8 @@ Le code lu est celui de `origin/main` le 2026-11-10 (`npm-packages` add719b8, `o
 | [03 - Plan d'implémentation](03-plan-d-implementation.md) | Lots de 3 h au plus : dépôt, fichiers, changement exact, tests, règle du STOP, risques, retour arrière, critère d'acceptation |
 | [04 - Risques de cohérence](04-risques-de-coherence.md) | Idempotence sur l'id de l'événement, atomicité Neo4j et outbox, lots d'outbox et fenêtre de panne, triggers SQL |
 | [05 - Non vérifié](05-non-verifie.md) | Ce qui reste à regarder, et avec quel outil |
+| [06 - Conception de L9](06-conception-l9-ms-social.md) | ms-social « Postgres d'abord » : table `social_edge`, worker-social qui applique dans Neo4j, ordre des événements, concurrence, options écartées |
+| [07 - Options de L11](07-options-l11-ms-ranking.md) | L'écriture à la lecture de ms-ranking : fonctionnement, options, recommandation, décision attendue |
 
 ## Ordre de mise en œuvre
 
@@ -42,7 +44,7 @@ Le code lu est celui de `origin/main` le 2026-11-10 (`npm-packages` add719b8, `o
 | 7 | L6 `update()` et `create()` du socle | `npm-packages` (`database`) | Touche toutes les écritures d'un coup |
 | 8 | L7 Créations de post et d'événement | `npm-packages` (`domain-post`, `domain-event`) | Relectures inutiles après insert |
 | 9 | L8 Saga et succès de job par lot | `post-processors-runner`, `npm-packages` (`post-processors`) | Une requête par lot au lieu d'un `update()` par événement |
-| 10 | L9 ms-social : une requête Cypher et l'outbox atomique | `npm-packages` (`domain-social`) | Cohérence d'abord, vitesse ensuite |
+| 10 | L9 ms-social : Postgres d'abord, Neo4j par worker (chapitre 06) | `npm-packages` (`messaging`, `domain-social`), `ms-social`, `workers-runners`, `deploy` | Cohérence d'abord, et lissage des écritures sur Neo4j |
 | 11 | L10 Pool de connexions | `npm-packages` (`bridge`, `config`) puis `ms-*` | Taille réelle du pool, budget de connexions |
 | 12 | L11 Écriture à la lecture dans ms-ranking | `ms-ranking`, `npm-packages` (`domain-ranking`) | Décision métier préalable |
 | 13 | L12 Compteurs de badges et concurrence des workers | `post-processors-runner`, `workers-runners`, `deploy` | Gains locaux, à faire quand la mesure le justifie |

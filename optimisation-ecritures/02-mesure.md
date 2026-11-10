@@ -82,7 +82,44 @@ FROM event_queue WHERE status IN ('PROCESSING','FAILED','PENDING') GROUP BY 1, 2
 
 ## 2. Activer `pg_stat_statements` (L0)
 
-Ce n'est pas fait : cela demande un redémarrage des bases et une écriture (`CREATE EXTENSION`), hors du mandat de ce dossier. Procédure proposée, à valider par le Lead Dev :
+**État au 2026-11-10** : PR Volontariapp/deploy#77 ouverte en brouillon, **à ne pas fusionner sans décision de Victor** (chaque base redémarre). Vérifié avant de l'ouvrir :
+
+- le chart 15.5.30 lit `primary.args` (`templates/primary/statefulset.yaml:199-200`) et `kustomize build --enable-helm` le rend dans le conteneur `postgresql` des sept overlays (FAIT) ;
+- le StatefulSet en prod n'a ni `command` ni `args` (FAIT, `kubectl get sts ms-post-db-postgresql -o jsonpath`) : `args` remplace le `CMD` de l'image, et `docker-entrypoint.sh` ajoute `postgres` devant un premier argument qui commence par `-` ;
+- en local, `postgres:16-alpine` et `postgis/postgis:16-3.4` démarrent avec ces arguments, `CREATE EXTENSION pg_stat_statements` réussit et `track_io_timing` vaut `on` (FAIT) ;
+- l'utilisateur applicatif `ms-post` est superutilisateur (FAIT, lecture de `pg_roles`) ; `pg_stat_statements` n'est pas une extension « trusted », il faut ce droit pour la créer.
+
+### Procédure du `CREATE EXTENSION` (Victor, après la synchronisation de deploy#77)
+
+Une base à la fois, hors rampe. Pour chaque `<svc>` parmi `ms-post ms-event ms-social ms-user ms-storage ms-ranking ws-service` :
+
+```bash
+# 1. attendre le redémarrage de la base et vérifier que la bibliothèque est chargée
+kubectl -n prod rollout status sts/<svc>-db-postgresql --timeout=180s
+kubectl -n prod exec -i <svc>-db-postgresql-0 -- sh -c \
+  'PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" -X -tA \
+   -c "SHOW shared_preload_libraries" -c "SHOW track_io_timing"'
+# attendu : pg_stat_statements, puis on
+
+# 2. créer l'extension (écriture, une fois par base)
+kubectl -n prod exec -i <svc>-db-postgresql-0 -- sh -c \
+  'PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" -X -v ON_ERROR_STOP=1 \
+   -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements"'
+
+# 3. contrôle (lecture seule)
+kubectl -n prod exec -i <svc>-db-postgresql-0 -- sh -c \
+  'PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DATABASE" -X -tA \
+   -c "SET default_transaction_read_only = on" -c "SELECT count(*) FROM pg_stat_statements"'
+
+# 4. vérifier que les pods du service ont repris leurs connexions
+#    (outbox-<suffixe> : outbox-post, outbox-event, outbox-social, outbox-user, outbox-storage,
+#     outbox-ranking, outbox-ws)
+kubectl -n prod get pods | grep -E '<suffixe>' ; kubectl -n prod logs deploy/outbox-<suffixe> --since=5m | tail -20
+```
+
+L'extension n'existe que dans la base où elle est créée : `$POSTGRES_DATABASE` est la base applicative, c'est là que tournent les requêtes à mesurer. Retour arrière : `DROP EXTENSION pg_stat_statements;` puis retirer les arguments (nouveau redémarrage).
+
+Procédure d'origine, gardée pour les raisons des choix :
 
 1. Dans chaque `deploy/apps/overlays/prod/<service>/db-postgres/kustomization.yaml`, ajouter aux `valuesInline.primary` les arguments du conteneur, puisque l'image officielle lit `-c` :
 
