@@ -2,7 +2,9 @@
 
 Dossier rédigé le 2026-11-09 à partir des mesures du soir du 2026-11-08 (Victor, Lead Dev, avec un agent Claude Code). Il répond à une question : **que faut-il faire pour que la plateforme tienne 300 requêtes par seconde sur la machine actuelle ?** Il explique ce qui a été mesuré, ce que cela prouve et ne prouve pas, puis le plan d'implémentation, étape par étape.
 
-**Statut au 2026-11-09 (14:00) : 300 req/s tenus une fois, à la limite au second passage ; la machine manque de mémoire.** La vague 1 a fait passer le plafond de 250 à 300 req/s (p95 196 ms au premier passage, 483 ms au second, `ms-event-db` à sa limite de CPU). Le total de la recherche d'événements est en cache depuis 13:41 (`domain-event` 3.17.0), mais les rampes suivantes se sont effondrées à 275 puis à 200 req/s : la VM relit son disque faute de mémoire. Détail aux [chapitres 06](06-resultats-vague1.md) et [07](07-ms-event-db-et-memoire.md).
+**Statut au 2026-11-10 : 400 req/s tenus sur le mélange de 4 routes, mais un Neo4j froid casse la première rafale.** Avec le plancher mémoire de la VM relevé à 14 Go et la vague 2 déployée, 300 req/s passent avec 0 erreur et un p95 de 166 ms, et 400 req/s avec un p95 de 196 ms, nœud à 52 % de CPU ([chapitre 08](08-memoire-vague2-et-400.md)). Après un redémarrage de Neo4j ou des heures sans travail, 100 req/s donnent 80 % d'erreurs : Neo4j tourne avec 1 CPU par erreur de configuration et ses lectures n'ont pas de timeout ([chapitre 09](09-demarrage-a-froid.md), correctifs en PR). Ces chiffres ne mesurent pas l'application réelle, qui lit `/ranking/feed` et `/ranking/events` : la rampe est en refonte ([chapitre 10](10-suites.md)).
+
+Historique : le 2026-11-09 à 14:00, 300 req/s tenaient une fois, à la limite au second passage, et les rampes suivantes s'effondraient faute de mémoire ([chapitres 06](06-resultats-vague1.md) et [07](07-ms-event-db-et-memoire.md)).
 
 ## Chapitres
 
@@ -16,6 +18,9 @@ Dossier rédigé le 2026-11-09 à partir des mesures du soir du 2026-11-08 (Vict
 | [05 - Plan vers 300](05-plan-vers-300.md) | Phases A (hôte), B (mémoire de Node), C (code), D (mesure finale), portes de décision, décisions ouvertes |
 | [06 - Résultats de la vague 1](06-resultats-vague1.md) | Sept changements (OpenTelemetry, journaux, HTTP, caches, validation, deadlines), rampe 225 à 300 req/s, CPU par pod, réussite des caches, prochain goulot |
 | [07 - ms-event-db, puis la mémoire de la VM](07-ms-event-db-et-memoire.md) | Confirmation à 300 req/s, EXPLAIN du total de la recherche, `domain-event` 3.17.0, deux effondrements dus au manque de mémoire, prochaines étapes |
+| [08 - Mémoire de la VM, vague 2, puis 400 req/s](08-memoire-vague2-et-400.md) | Ballon Proxmox, limites de Traefik, vague 2 (jetons, exclusions, pages de posts, GetUser), rampes jusqu'à 400 req/s, marge par composant, limite du mélange de 4 routes |
+| [09 - Démarrage à froid](09-demarrage-a-froid.md) | Panne de la première rafale, deux tests qui départagent les hypothèses, Neo4j à 1 CPU par erreur, correctifs C1 à C5, critère d'acceptation |
+| [10 - Suites](10-suites.md) | Rampe réaliste (décisions, lots L1 à L8), arrêt des post-processors (SIGTERM), optimisation des écritures, ordre de mise en œuvre, règles de travail |
 
 ## Le résumé
 
