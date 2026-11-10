@@ -22,6 +22,7 @@ Historique : le 2026-11-09 à 14:00, 300 req/s tenaient une fois, à la limite a
 | [09 - Démarrage à froid](09-demarrage-a-froid.md) | Panne de la première rafale, deux tests qui départagent les hypothèses, Neo4j à 1 CPU par erreur, correctifs C1 à C5, critère d'acceptation |
 | [10 - Suites](10-suites.md) | Rampe réaliste (décisions, lots L1 à L8), arrêt des post-processors (SIGTERM), optimisation des écritures, ordre de mise en œuvre, règles de travail |
 | [11 - Passation](11-passation.md) | État de chaque chantier au 2026-11-10, PR ouvertes, commandes, décisions et pièges pour les prochains agents |
+| [12 - Ticket : prérequis de L9 async](12-ticket-l9-prerequis-async.md) | Nettoyage de `social_edge` dans les suppressions faites par les post-processors, fin des erreurs d'outbox avalées dans `domain-social` (STOP) |
 
 ## Le résumé
 
