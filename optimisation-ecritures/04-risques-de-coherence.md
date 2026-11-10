@@ -47,7 +47,7 @@ Ordre des événements : la reprise remet en `PENDING` des lignes anciennes, qui
 
 Aujourd'hui (FAIT) : `likePost` écrit le like dans Neo4j (`interaction.service.ts:49`), puis la ligne `event_queue` dans Postgres (`:66`) ; une erreur Postgres est avalée en `warn` (`:70-74`). Même chose pour l'unlike, le souhait et son retrait. Conséquence : un like sans `post.liked`, donc sans badge, sans notification, sans effet sur le classement. Autre défaut : `createLike` ne vérifie pas que le `MERGE` a créé quelque chose (`neo4j-interaction.repository.ts:26-35`) ; si le nœud `SocialPost` n'existe pas encore (créé de façon asynchrone par `post-processor-social` à partir de `post.created`), aucun like n'est écrit mais `post.liked` part quand même.
 
-Il n'y a pas de transaction commune à Neo4j et Postgres. Trois options :
+Il n'y a pas de transaction commune à Neo4j et Postgres. **Décision du 2026-11-10 : option « Postgres d'abord » (proche de B, sans changer le contrat de l'API), conception au chapitre 06.** Les trois options d'origine :
 
 | Option | Principe | Fenêtre d'incohérence | Coût |
 | :--- | :--- | :--- | :--- |

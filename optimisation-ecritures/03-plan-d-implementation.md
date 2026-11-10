@@ -2,6 +2,20 @@
 
 Treize lots, chacun de 3 h au plus pour un agent qui connaît le projet. Chaque lot donne le dépôt, les fichiers, le changement, les tests, la règle du STOP, les risques et le retour arrière, et un critère d'acceptation mesurable. Les numéros de ligne sont ceux d'`origin/main` le 2026-11-10 : relire le fichier avant d'éditer.
 
+## Avancement
+
+Mis à jour à chaque lot. « Prête » veut dire CI verte et en attente de fusion par Victor.
+
+| Lot | État | PR | Écart au plan |
+| :--- | :--- | :--- | :--- |
+| L0 | PR en brouillon, ne pas fusionner sans décision (redémarre les bases) ; procédure du `CREATE EXTENSION` au chapitre 02, section 2 | Volontariapp/deploy#77 | Aucun : `primary.args` vérifié par `kustomize build --enable-helm` et en local |
+| L1 | Hors de ce dossier (orchestrateur de rampe) | | |
+| L2 | PR ouvertes | Volontariapp/outbox-runners#48, puis Volontariapp/deploy#76 | **La variable `OUTBOX_MAX_IDLE_INTERVAL_MS` n'était lue par aucun runner** (aucun `custom-env-vars.json` ne la liait) : la valeur de `deploy` était ignorée. #48 ajoute le lien dans les sept runners ; ordre de fusion indifférent |
+| L3, L4, L5 | Conception relue, code après le feu vert `npm-packages` | | L4 : seuil d'âge de la reprise (voir L4) |
+| L9 | Conception écrite, chapitre 06 | | **Option changée** : « Postgres d'abord » (décision de Victor), au lieu de l'option A |
+| L11 | Options écrites, chapitre 07 ; décision de Victor attendue | | Non implémenté (consigne) |
+| L12 | Non commencé : à faire quand la mesure le justifie. La concurrence de `worker-social` est traitée dans L9 | | |
+
 ## Règles communes
 
 - **Règle du STOP** (`AGENTS.md`, section 1) pour tout lot marqué `npm-packages` : `yarn build` et `yarn test` du package, `yarn changeset add` puis `yarn changeset version` une fois par branche, une PR, **arrêt**. Les consommateurs ne sont touchés qu'après la publication par la CI (`npm view @volontariapp/<package>@<version> version --prefer-online` répond), avec `yarn up`, dans une PR par dépôt consommateur. Aucun `as unknown as`, aucun `any`.
@@ -33,6 +47,7 @@ Treize lots, chacun de 3 h au plus pour un agent qui connaît le projet. Chaque 
 
 - **Dépôt** : `deploy`.
 - **Fichiers** : `apps/base/{ms-post,ms-event,ms-social,ms-user,ms-storage,ms-ranking}/deployment-outbox.yaml` et `apps/base/ws-service/deployment-outbox.yaml`, variable `OUTBOX_MAX_IDLE_INTERVAL_MS` (`:89-90`, `:71-72` pour ws-service).
+- **Écart constaté le 2026-11-10** : aucun runner ne lisait cette variable (pas de lien dans `outbox-runners/*/config/custom-env-vars.json`) ; ajouté par Volontariapp/outbox-runners#48. La PR `deploy` est Volontariapp/deploy#76.
 - **Changement** : `5000` vers `1000`. Coût : au repos, 14 boucles (événements et jobs dans 7 runners) font au plus 1 claim par seconde, soit 14 transactions par seconde réparties sur 7 bases (INFERENCE, 3 RT chacune).
 - **Tests** : aucun test de code ; vérifier le rendu Kustomize.
 - **STOP** : non concerné.
@@ -71,7 +86,20 @@ Treize lots, chacun de 3 h au plus pour un agent qui connaît le projet. Chaque 
   3. Une erreur sur une ligne ne sort plus de la boucle (`outbox.consumer.ts:130-136`) : chaque `markAsFailed` a son propre `try`.
 - **Tests** : intégration sur la base de test : une ligne `PROCESSING` vieille de 10 min revient `PENDING` ; une `PROCESSING` de 1 min non ; une `FAILED` avec `attempts = 1` revient après le délai, `attempts = 5` non ; un échec de l'UPDATE de `markAsCompleted` (spy qui lève) laisse les lignes suivantes du lot traitées.
 - **Consommateurs** : `yarn up @volontariapp/database @volontariapp/config` dans les sept `outbox-*`, puis les variables dans `deploy` si les défauts ne conviennent pas.
-- **Décision du Lead Dev avant le déploiement** : les 147 lignes du 2026-11-07 seront reprises au premier passage. Elles portent des événements vieux de trois jours (`user.created`, `post.created`, `post.liked`, `event.*`). Choisir : les laisser repartir (les post-processors sont censés être idempotents, mais `user.created` refait le nœud Neo4j et le classement), ou les passer à la main en `FAILED` avec `attempts = 99` avant le déploiement. Recommandation : les laisser repartir après lecture de chaque consommateur concerné (`analyze_impact` sur chaque type).
+- **Décision prise (orchestrateur, 2026-11-10)** : les 147 lignes du 2026-11-07 ne sont **pas** reprises automatiquement. La reprise automatique ne traite que les lignes dont `created_at` est plus récent que `reapMaxAgeMs` (défaut 900 000, soit 15 min, variable `OUTBOX_REAP_MAX_AGE_MS`), ajouté à la clause `WHERE` de la requête ci-dessus (`AND created_at > NOW() - make_interval(secs => $5)`). Les lignes plus anciennes passent par une commande explicite, journalisée, lancée par Victor :
+
+  ```bash
+  # dans le pod du runner du service (ici ms-social), lecture seule par défaut
+  kubectl -n prod exec deploy/outbox-social -- node dist/requeue.js \
+    --table event_queue --status PROCESSING,FAILED \
+    --created-before 2026-11-07T16:00:00Z --type post.liked
+  # affiche le nombre et les ids des lignes visées, sans rien écrire
+  kubectl -n prod exec deploy/outbox-social -- node dist/requeue.js \
+    --table event_queue --status PROCESSING,FAILED \
+    --created-before 2026-11-07T16:00:00Z --type post.liked --apply --reason "replay 2026-11-07 incident"
+  ```
+
+  `--apply` remet les lignes en `PENDING` (`attempts` inchangé, `updated_at = NOW()`) par lots de 100, et écrit un log `warn` par lot avec les ids, le motif et l'opérateur (`$USER` du pod ou `--operator`), visible dans Datadog. Sans `--type`, la commande refuse de tourner. Le nom de l'outil, ses options et son emplacement (`@volontariapp/database`, binaire dans l'image des runners) sont **la conception**, à confirmer avec le code de L4. Avant de rejouer un type, lire ses consommateurs (`analyze_impact`) : `user.created` refait le nœud Neo4j et le classement, `post.liked` refait un badge et une notification vieux de trois jours.
 - **Risques, retour arrière** : livraison « au moins une fois » : un message peut être poussé deux fois, d'où L3. Retour : version précédente du package dans les runners.
 - **Acceptation** : 0 ligne `PROCESSING` de plus de 5 min et 0 `FAILED` avec `attempts < 5` dans les sept bases, 10 min après le déploiement ; monitor Datadog en place (chapitre 02, section 3).
 
@@ -133,6 +161,8 @@ Treize lots, chacun de 3 h au plus pour un agent qui connaît le projet. Chaque 
 
 ## L9 - ms-social : une requête Cypher et l'outbox atomique
 
+> **Remplacé par le chapitre 06** (décision de Victor du 2026-11-10 : « Postgres d'abord », intention et outbox dans une transaction Postgres, application dans Neo4j par `worker-social`). Le texte ci-dessous est l'ancienne option A, gardé pour l'historique ; les requêtes Cypher en une seule session restent valables pour le handler du worker.
+
 - **Dépôt** : `npm-packages`, package `domain-social`. **STOP.** Consommateur : `ms-social`.
 - **Fichiers** : `packages/domain-social/src/services/interaction.service.ts:41-127`, `services/participation.service.ts:163-330` (participation, départ, souhait, retrait), `services/relationship.service.ts:26-60`, `repositories/neo4j-interaction.repository.ts`, `repositories/neo4j-participation.repository.ts`, `repositories/neo4j-relationship.repository.ts`, `repositories/base/neo4j-base.repository.ts:58-67` (une variante `writeReturning` qui renvoie les enregistrements).
 - **Changement** :
@@ -164,6 +194,8 @@ Treize lots, chacun de 3 h au plus pour un agent qui connaît le projet. Chaque 
 - **Acceptation** : `DB_MAX_POOL_SIZE=5` sur un service se lit dans `pg_stat_activity` (au plus 5 connexions de ce pod) pendant une rampe.
 
 ## L11 - L'écriture à la lecture de ms-ranking
+
+> **Options et recommandation au chapitre 07.** Non implémenté : décision de Victor attendue.
 
 - **Dépôts** : `npm-packages` (`domain-ranking`) **STOP**, puis `ms-ranking`.
 - **Fichiers** : `packages/domain-ranking/src/repositories/postgres-ranking-request.repository.ts:35-60` ; `ms-ranking/src/modules/ranking/services/ranking-job.service.ts:31-72` ; `ranking-read.service.ts:120-133`.
