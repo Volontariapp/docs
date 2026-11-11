@@ -23,6 +23,7 @@ Historique : le 2026-11-09 à 14:00, 300 req/s tenaient une fois, à la limite a
 | [10 - Suites](10-suites.md) | Rampe réaliste (décisions, lots L1 à L8), arrêt des post-processors (SIGTERM), optimisation des écritures, ordre de mise en œuvre, règles de travail |
 | [11 - Passation](11-passation.md) | État de chaque chantier au 2026-11-10, PR ouvertes, commandes, décisions et pièges pour les prochains agents |
 | [12 - Ticket : prérequis de L9 async](12-ticket-l9-prerequis-async.md) | Nettoyage de `social_edge` dans les suppressions faites par les post-processors, fin des erreurs d'outbox avalées dans `domain-social` (STOP) |
+| [13 - Chantiers restants](13-chantiers-restants.md) | **À lire en premier pour reprendre le travail** : état au 2026-11-10 soir, puis, chantier par chantier, étapes, fichiers, commandes et critères d'acceptation (E2E, rampe vers 300, L9 async, L5, L11, L6 à L8, L10, L12, skills, dettes) |
 
 ## Le résumé
 
